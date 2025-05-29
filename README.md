@@ -163,3 +163,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 **Project Status**: ✅ **COMPLETE**
 
 Both approaches are working. The OpenRouter Anthropic Server is recommended for Claude Code due to its perfect API compatibility.
+
+## Thanks
+
+Special thanks to [https://github.com/coffeegrind123/gemini-code](https://github.com/coffeegrind123/gemini-code) for inspiration and original code.
