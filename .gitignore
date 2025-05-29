@@ -1,0 +1,51 @@
+# Environment variables and secrets
+.env
+.env.local
+.env.production
+.env.staging
+
+# API keys and sensitive configuration
+**/api_keys.txt
+**/secrets.yaml
+**/*secret*
+**/*key*
+
+# Docker volumes and data
+docker-data/
+volumes/
+
+# Logs
+*.log
+logs/
+docker-compose.override.yml
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# IDE files
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+*~
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# Backup files
+*.bak
+*.backup
+
+# History files (contain sensitive data)
+.history/
+**/.history/
+
+.claude

@@ -1,0 +1,32 @@
+model_list:
+  - model_name: anthropic/claude-sonnet-4
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4
+      api_base: https://openrouter.ai/api/v1
+      api_key: os.environ/OPENROUTER_API_KEY
+      headers:
+        HTTP-Referer: http://localhost:4000
+        X-Title: Claude-Code-LiteLLM-Proxy
+
+general_settings:
+  master_key: os.environ/LITELLM_MASTER_KEY  # Read from environment variable
+  # database_url: null  # Database is optional for internal use
+  # Only needed for: user management, request logging, analytics, rate limiting per user
+  # For simple proxy usage, no database is required
+  disable_spend_logs: true
+  disable_master_key_return: true
+  
+router_settings:
+  routing_strategy: simple-shuffle
+  model_group_alias:
+    claude-sonnet-4: anthropic/claude-sonnet-4
+  
+litellm_settings:
+  drop_params: true
+  set_verbose: true
+  json_logs: true
+  log_raw_request_response: false
+
+logging:
+  level: INFO
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
