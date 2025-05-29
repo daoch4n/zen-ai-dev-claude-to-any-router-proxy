@@ -58,7 +58,37 @@ class MessageFilter(logging.Filter):
 root_logger = logging.getLogger()
 root_logger.addFilter(MessageFilter())
 
+# Custom formatter for model mapping logs
+class ColorizedFormatter(logging.Formatter):
+    """Custom formatter to highlight model mappings"""
+    BLUE = "\033[94m"
+    GREEN = "\033[92m"
+    YELLOW = "\033[93m"
+    RED = "\033[91m"
+    RESET = "\033[0m"
+    BOLD = "\033[1m"
+
+    def format(self, record):
+        if record.levelno == logging.DEBUG and "MODEL MAPPING" in record.msg:
+            # Apply colors and formatting to model mapping logs
+            return f"{self.BOLD}{self.GREEN}{record.msg}{self.RESET}"
+        return super().format(record)
+
+# Apply custom formatter to console handler
+for handler in logger.handlers:
+    if isinstance(handler, logging.StreamHandler):
+        handler.setFormatter(ColorizedFormatter('%(asctime)s - %(levelname)s - %(message)s'))
+
 app = FastAPI()
+
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Middleware to log HTTP requests"""
+    method = request.method
+    path = request.url.path
+    logger.debug(f"Request: {method} {path}")
+    response = await call_next(request)
+    return response
 
 # Get API keys from environment
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -83,13 +113,13 @@ class ContentBlockImage(BaseModel):
 
 class ContentBlockToolUse(BaseModel):
     type: Literal["tool_use"]
-    id: str
-    name: str
-    input: Dict[str, Any]
+    id: Optional[str] = None  # Can be null during streaming
+    name: Optional[str] = ""  # Can be empty during streaming
+    input: Dict[str, Any] = {}  # Can be empty initially
 
 class ContentBlockToolResult(BaseModel):
     type: Literal["tool_result"]
-    tool_use_id: str
+    tool_use_id: Optional[str] = None  # Can be null in some cases
     content: Union[str, List[Dict[str, Any]], Dict[str, Any], List[Any], Any]
 
 class SystemContent(BaseModel):
@@ -99,6 +129,35 @@ class SystemContent(BaseModel):
 class Message(BaseModel):
     role: Literal["user", "assistant"]
     content: Union[str, List[Union[ContentBlockText, ContentBlockImage, ContentBlockToolUse, ContentBlockToolResult]]]
+    
+    @field_validator('content', mode='before')
+    def validate_content(cls, v):
+        # Handle edge cases where content might be malformed
+        if isinstance(v, list):
+            # Filter out any invalid content blocks
+            valid_blocks = []
+            for block in v:
+                if isinstance(block, dict):
+                    block_type = block.get('type')
+                    if block_type == 'tool_use':
+                        # Ensure tool_use blocks have required fields with defaults
+                        if 'id' not in block or block['id'] is None:
+                            block['id'] = f"tool_{uuid.uuid4()}"
+                        if 'name' not in block or not block['name']:
+                            block['name'] = "unknown_tool"
+                        if 'input' not in block:
+                            block['input'] = {}
+                    elif block_type == 'tool_result':
+                        # Ensure tool_result blocks have required fields
+                        if 'tool_use_id' not in block or block['tool_use_id'] is None:
+                            block['tool_use_id'] = f"tool_{uuid.uuid4()}"
+                        if 'content' not in block:
+                            block['content'] = ""
+                    valid_blocks.append(block)
+                else:
+                    valid_blocks.append(block)
+            return valid_blocks
+        return v
 
 class Tool(BaseModel):
     name: str
@@ -212,6 +271,38 @@ def parse_tool_result_content(content):
         return str(content)
     except:
         return "Unparseable content"
+
+def clean_openrouter_schema(schema: Any) -> Any:
+    """Recursively removes unsupported fields from a JSON schema for OpenRouter."""
+    if isinstance(schema, dict):
+        # Remove specific keys that might be unsupported by OpenRouter
+        schema.pop("additionalProperties", None)
+        schema.pop("default", None)
+
+        # Check for unsupported 'format' in string types
+        if schema.get("type") == "string" and "format" in schema:
+            allowed_formats = {"enum", "date-time"}  # Safe subset
+            if schema["format"] not in allowed_formats:
+                logger.debug(f"Removing unsupported format '{schema['format']}' for string type in OpenRouter schema.")
+                schema.pop("format")
+
+        # Recursively clean nested schemas
+        for key, value in list(schema.items()):
+            schema[key] = clean_openrouter_schema(value)
+    elif isinstance(schema, list):
+        # Recursively clean items in a list
+        return [clean_openrouter_schema(item) for item in schema]
+    return schema
+
+def is_valid_json(json_str):
+    """Helper function to validate JSON strings."""
+    if not isinstance(json_str, str):
+        return False
+    try:
+        json.loads(json_str)
+        return True
+    except json.JSONDecodeError:
+        return False
 
 def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str, Any]:
     """Convert Anthropic request to LiteLLM format - based on Gemini server"""
@@ -354,15 +445,17 @@ def convert_anthropic_to_litellm(anthropic_request: MessagesRequest) -> Dict[str
         for tool_obj in anthropic_request.tools:
             tool_dict = tool_obj.dict()
             input_schema = tool_dict.get("input_schema", {})
+            cleaned_schema = clean_openrouter_schema(input_schema)  # Re-enable conservative schema cleaning
             openrouter_tools.append({
                 "type": "function",
                 "function": {
                     "name": tool_dict["name"],
                     "description": tool_dict.get("description", ""),
-                    "parameters": input_schema
+                    "parameters": cleaned_schema
                 }
             })
         litellm_request_dict["tools"] = openrouter_tools
+        
 
     if anthropic_request.tool_choice:
         tool_choice_dict = anthropic_request.tool_choice
@@ -517,6 +610,12 @@ async def create_message(
         litellm_request = convert_anthropic_to_litellm(request)
         litellm_request["api_key"] = OPENROUTER_API_KEY
         
+        # Debug: Log the exact request being sent to OpenRouter
+        if request.tools:
+            logger.info(f"🔧 Sending {len(request.tools)} tools to OpenRouter")
+            logger.debug(f"🔧 Tools payload: {json.dumps(litellm_request.get('tools', []), indent=2)}")
+        logger.debug(f"🔧 Full LiteLLM request: {json.dumps({k: v for k, v in litellm_request.items() if k != 'api_key'}, indent=2)}")
+        
         # Add OpenRouter specific headers
         litellm_request["extra_headers"] = {
             "HTTP-Referer": "http://localhost:5001",
@@ -551,7 +650,15 @@ async def create_message(
             return anthropic_response
 
     except litellm.exceptions.APIError as e:
-        logger.error(f"LiteLLM APIError: Status Code: {e.status_code}, Message: {e.message}, LLM Provider: {e.llm_provider}, Model: {e.model}")
+        logger.error(f"🚨 LiteLLM APIError: Status Code: {e.status_code}, Message: {e.message}, LLM Provider: {e.llm_provider}, Model: {e.model}")
+        logger.error(f"🔍 Full error details: {str(e)}")
+        if hasattr(e, 'response') and hasattr(e.response, 'text'):
+            logger.error(f"🔍 OpenRouter response text: {e.response.text}")
+            try:
+                response_json = json.loads(e.response.text)
+                logger.error(f"🔍 OpenRouter response JSON: {json.dumps(response_json, indent=2)}")
+            except:
+                logger.error(f"🔍 Could not parse OpenRouter response as JSON")
         import traceback
         logger.error(traceback.format_exc())
         
@@ -569,10 +676,97 @@ async def create_message(
     except Exception as e:
         import traceback
         error_traceback = traceback.format_exc()
-        logger.error(f"Error processing request: {str(e)}\n{error_traceback}")
-        
+        error_details = {
+            "error": str(e), "type": type(e).__name__, "traceback": error_traceback
+        }
+        # Create serializable error details
+        serializable_details = {}
+        for key, value in error_details.items():
+            try:
+                json.dumps({key: value})
+                serializable_details[key] = value
+            except TypeError:
+                serializable_details[key] = f"<{type(value).__name__}>: {str(value)}"
+        logger.error(f"Error processing request: {json.dumps(serializable_details, indent=2)}")
+
         status_code = getattr(e, 'status_code', 500)
         raise HTTPException(status_code=status_code, detail=f"Internal Server Error: {str(e)}")
+
+class TokenCountRequest(BaseModel):
+    model: str
+    messages: List[Message]
+    system: Optional[Union[str, List[SystemContent]]] = None
+    tools: Optional[List[Tool]] = None
+    thinking: Optional[ThinkingConfig] = None
+    tool_choice: Optional[Dict[str, Any]] = None
+    original_model: Optional[str] = None
+
+    @field_validator('model')
+    def validate_model_token_count(cls, v, info):
+        # Reuse the same validation logic from MessagesRequest
+        original_model = v
+        
+        # Model mapping for Claude Code compatibility
+        model_mapping = {
+            'claude-sonnet-4-20250514': BIG_MODEL,
+            'claude-opus-4-20250514': BIG_MODEL,
+            'claude-3-7-sonnet-20250219': SMALL_MODEL,
+            'claude-sonnet-4': BIG_MODEL,
+            'claude-3.7-sonnet': SMALL_MODEL,
+            'claude-3-5-sonnet': SMALL_MODEL,
+            'claude-3-sonnet': SMALL_MODEL,
+        }
+        
+        new_model = model_mapping.get(v, BIG_MODEL)
+        
+        # Ensure openrouter/ prefix for LiteLLM
+        if not new_model.startswith('openrouter/'):
+            new_model = f"openrouter/{new_model}"
+        
+        # Store original model
+        values = info.data
+        if isinstance(values, dict):
+            values['original_model'] = original_model
+        
+        return new_model
+
+class TokenCountResponse(BaseModel):
+    input_tokens: int
+
+@app.post("/v1/messages/count_tokens")
+async def count_tokens(
+    request: TokenCountRequest,
+    raw_request: Request
+):
+    try:
+        # Convert the messages to a format LiteLLM can understand for token counting
+        temp_messages_request = MessagesRequest(
+            model=request.model,
+            max_tokens=1,
+            messages=request.messages,
+            system=request.system,
+            tools=request.tools,
+        )
+        litellm_formatted_parts = convert_anthropic_to_litellm(temp_messages_request)
+
+        num_tools = len(request.tools) if request.tools else 0
+        log_request_beautifully(
+            "POST", raw_request.url.path,
+            request.original_model or request.model,
+            litellm_formatted_parts.get('model'),
+            len(litellm_formatted_parts['messages']), num_tools, 200
+        )
+
+        token_count = litellm.token_counter(
+            model=litellm_formatted_parts["model"],
+            messages=litellm_formatted_parts["messages"],
+        )
+        return TokenCountResponse(input_tokens=token_count)
+
+    except Exception as e:
+        import traceback
+        logger.error(f"Error counting tokens: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Error counting tokens: {str(e)}")
 
 @app.get("/health")
 async def health():
@@ -597,6 +791,8 @@ async def handle_streaming(response_generator, original_request: MessagesRequest
 
     accumulated_text = ""
     text_block_index = 0
+    tool_block_index_counter = 0  # For assigning new indices to tool blocks
+    current_tool_calls_data = {}  # {tool_call_id: {"index": X, "name": Y, "args_buffer": Z}}
     input_tokens = 0
     output_tokens = 0
     final_stop_reason = "end_turn"
@@ -614,6 +810,7 @@ async def handle_streaming(response_generator, original_request: MessagesRequest
                     continue
 
             delta_content_text = None
+            delta_tool_calls = None
             chunk_finish_reason = None
 
             if hasattr(chunk, 'choices') and chunk.choices:
@@ -621,16 +818,59 @@ async def handle_streaming(response_generator, original_request: MessagesRequest
                 if hasattr(choice, 'delta') and choice.delta:
                     delta = choice.delta
                     delta_content_text = delta.content
+                    if hasattr(delta, 'tool_calls') and delta.tool_calls:
+                        delta_tool_calls = delta.tool_calls
                 chunk_finish_reason = choice.finish_reason
 
             if hasattr(chunk, 'usage') and chunk.usage:
                 input_tokens = chunk.usage.prompt_tokens
                 output_tokens = chunk.usage.completion_tokens
+                logger.debug(f"Received usage in chunk: Input={input_tokens}, Output={output_tokens}")
 
             # Handle text delta
             if delta_content_text:
                 accumulated_text += delta_content_text
                 yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': text_block_index, 'delta': {'type': 'text_delta', 'text': delta_content_text}})}\n\n"
+
+            # Handle tool call deltas
+            if delta_tool_calls:
+                if not accumulated_text and text_block_index == 0:
+                    # First content is a tool, text block was started but no text came
+                    pass
+
+                for tc_chunk in delta_tool_calls:
+                    tool_call_id = tc_chunk.id
+                    tool_index_in_chunk_list = tc_chunk.index
+
+                    if tool_call_id not in current_tool_calls_data:
+                        # New tool call started
+                        tool_block_index_counter += 1
+                        current_tool_block_anthropic_idx = text_block_index + tool_block_index_counter
+
+                        current_tool_calls_data[tool_call_id] = {
+                            "anthropic_idx": current_tool_block_anthropic_idx,
+                            "name": tc_chunk.function.name if tc_chunk.function.name else "",
+                            "args_buffer": tc_chunk.function.arguments if tc_chunk.function.arguments else "",
+                            "id_sent": False,
+                            "name_sent": bool(tc_chunk.function.name)
+                        }
+                        
+                        # Send content_block_start for the new tool
+                        if not current_tool_calls_data[tool_call_id]["id_sent"]:
+                            yield f"event: content_block_start\ndata: {json.dumps({'type': 'content_block_start', 'index': current_tool_block_anthropic_idx, 'content_block': {'type': 'tool_use', 'id': tool_call_id, 'name': current_tool_calls_data[tool_call_id]['name'], 'input': {}}})}\n\n"
+                            current_tool_calls_data[tool_call_id]["id_sent"] = True
+                    else:
+                        # Continuation of an existing tool call
+                        if tc_chunk.function.name and not current_tool_calls_data[tool_call_id]["name_sent"]:
+                            current_tool_calls_data[tool_call_id]["name"] = tc_chunk.function.name
+                            logger.warning("Tool name received in a later chunk part, which is unusual for SSE.")
+
+                        if tc_chunk.function.arguments:
+                            current_tool_calls_data[tool_call_id]["args_buffer"] += tc_chunk.function.arguments
+
+                    # Send argument delta
+                    if tc_chunk.function.arguments:
+                        yield f"event: content_block_delta\ndata: {json.dumps({'type': 'content_block_delta', 'index': current_tool_calls_data[tool_call_id]['anthropic_idx'], 'delta': {'type': 'input_json_delta', 'partial_json': tc_chunk.function.arguments}})}\n\n"
 
             if chunk_finish_reason:
                 final_stop_reason = "end_turn"
@@ -646,6 +886,10 @@ async def handle_streaming(response_generator, original_request: MessagesRequest
                 # Stop the text block
                 yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': text_block_index})}\n\n"
 
+                # Stop all tool blocks
+                for tool_data in current_tool_calls_data.values():
+                    yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': tool_data['anthropic_idx']})}\n\n"
+
                 # Send message_delta with stop reason and final usage
                 final_usage = {"input_tokens": input_tokens, "output_tokens": output_tokens}
                 yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': final_stop_reason, 'stop_sequence': None}, 'usage': final_usage})}\n\n"
@@ -660,6 +904,9 @@ async def handle_streaming(response_generator, original_request: MessagesRequest
     # Fallback if stream ends without explicit finish_reason
     logger.debug("Stream ended without explicit finish_reason in last chunk. Finalizing.")
     yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': text_block_index})}\n\n"
+    for tool_data in current_tool_calls_data.values():
+        yield f"event: content_block_stop\ndata: {json.dumps({'type': 'content_block_stop', 'index': tool_data['anthropic_idx']})}\n\n"
+
     final_usage = {"input_tokens": input_tokens, "output_tokens": output_tokens}
     yield f"event: message_delta\ndata: {json.dumps({'type': 'message_delta', 'delta': {'stop_reason': final_stop_reason, 'stop_sequence': None}, 'usage': final_usage})}\n\n"
     yield f"event: message_stop\ndata: {json.dumps({'type': 'message_stop'})}\n\n"
@@ -686,15 +933,27 @@ def log_request_beautifully(method, path, requested_model, openrouter_model_used
 
 def main():
     """Main function"""
+    if len(sys.argv) > 1 and sys.argv[1] == "--help":
+        print("Run with: python openrouter_anthropic_server.py")
+        print("Or: uvicorn openrouter_anthropic_server:app --reload --host 0.0.0.0 --port 5001")
+        print("Ensure OPENROUTER_API_KEY is set in your environment or .env file.")
+        print("Optional .env vars:")
+        print(f"  ANTHROPIC_MODEL (default: {DEFAULT_BIG_MODEL})")
+        print(f"  ANTHROPIC_SMALL_FAST_MODEL (default: {DEFAULT_SMALL_MODEL})")
+        sys.exit(0)
+
     if not OPENROUTER_API_KEY:
-        print("🔴 FATAL: OPENROUTER_API_KEY is not set")
+        print("🔴 FATAL: OPENROUTER_API_KEY is not set. Please set it in your environment or .env file.")
+        print("If you have a .env file, ensure it's in the same directory or loaded correctly.")
         sys.exit(1)
+    else:
+        print(f"✅ OPENROUTER_API_KEY loaded. BIG_MODEL='{BIG_MODEL}', SMALL_MODEL='{SMALL_MODEL}'")
     
     print("🚀 Starting OpenRouter to Anthropic Proxy...")
     print(f"🔑 API Key: {OPENROUTER_API_KEY[:10]}...")
     print(f"📋 Models: BIG={BIG_MODEL}, SMALL={SMALL_MODEL}")
     
-    uvicorn.run(app, host="0.0.0.0", port=5001, log_level="info")
+    uvicorn.run(app, host="0.0.0.0", port=5001, log_level="warning")  # Match Gemini's log level
 
 if __name__ == "__main__":
     main()
