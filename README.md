@@ -28,7 +28,7 @@ cp .env.example .env
 docker-compose up -d
 
 # 3. Configure Claude Code
-export ANTHROPIC_BASE_URL=http://localhost:4000/anthropic
+export ANTHROPIC_BASE_URL=http://localhost:4000
 export ANTHROPIC_AUTH_TOKEN=your-secure-master-key-here
 
 # 4. Test
@@ -126,6 +126,19 @@ The custom server solves this by:
 - ✅ Perfect Claude Code compatibility
 - ✅ Simple deployment (single Python file)
 - ✅ Full feature support
+
+## ⚠️ Important: Claude Code Environment
+
+**Do NOT set proxy environment variables** (`HTTP_PROXY`, `HTTPS_PROXY`) in the Claude Code running environment. This will cause multiple errors including:
+- "API Error"
+- "Type Error"
+- Connection failures
+
+If you need proxy access for the servers themselves, configure proxy settings only in:
+- Docker container environment (for LiteLLM)
+- Server process environment (for OpenRouter Anthropic Server)
+
+**Keep Claude Code environment clean** - no proxy variables should be set when running `claude`.
 
 ## 📁 Final Project Structure
 
