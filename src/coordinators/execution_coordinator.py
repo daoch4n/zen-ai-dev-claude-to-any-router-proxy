@@ -12,7 +12,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core.logging_config import get_logger
 from ..services.context_manager import ContextManager
-from ..services.tool_execution import ToolExecutionResult, ToolResultFormatter, ToolUseDetector
+from ..tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 from ..models.anthropic import Message, MessagesRequest, MessagesResponse
 from .tool_coordinator import tool_coordinator
 
@@ -33,8 +33,9 @@ class ExecutionCoordinator:
     def __init__(self):
         """Initialize the execution coordinator."""
         self.tool_coordinator = tool_coordinator
-        self.result_formatter = ToolResultFormatter()
-        self.tool_detector = ToolUseDetector()
+        # Lazy-load these to avoid circular imports
+        self.result_formatter = None
+        self.tool_detector = None
         
         # Execution configuration
         self.config = {
@@ -45,6 +46,22 @@ class ExecutionCoordinator:
         }
         
         logger.info("Execution coordinator initialized with task-based architecture")
+    
+    @property
+    def _tool_detector(self):
+        """Lazy-load tool detector to avoid circular imports"""
+        if self.tool_detector is None:
+            from ..services.tool_execution import ToolUseDetector
+            self.tool_detector = ToolUseDetector()
+        return self.tool_detector
+    
+    @property
+    def _result_formatter(self):
+        """Lazy-load result formatter to avoid circular imports"""
+        if self.result_formatter is None:
+            from ..services.tool_execution import ToolResultFormatter
+            self.result_formatter = ToolResultFormatter()
+        return self.result_formatter
     
     async def process_response_with_tools(
         self,
@@ -66,11 +83,11 @@ class ExecutionCoordinator:
             Final MessagesResponse after tool execution and conversation continuation
         """
         logger.info("Processing response with potential tool use",
-                   has_tool_use=self.tool_detector.has_tool_use_blocks(litellm_response))
+                   has_tool_use=self._tool_detector.has_tool_use_blocks(litellm_response))
         
         try:
             # Check if response contains tool use
-            if not self.tool_detector.has_tool_use_blocks(litellm_response):
+            if not self._tool_detector.has_tool_use_blocks(litellm_response):
                 logger.debug("No tool use detected, converting response directly")
                 # Convert response directly without tool execution
                 from ..services.conversion import LiteLLMResponseToAnthropicConverter

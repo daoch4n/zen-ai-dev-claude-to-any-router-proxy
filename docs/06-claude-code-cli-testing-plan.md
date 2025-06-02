@@ -86,7 +86,7 @@ graph TD
    ```
 
 **Expected Results**:
-- ✅ All 155+ tests pass
+- ✅ All 283+ tests pass
 - ✅ Docker build succeeds
 - ✅ Production mode starts correctly
 
@@ -660,7 +660,7 @@ For each test:
 ### 📊 **Updated Success Criteria**
 
 #### **Critical Requirements** (Must Pass)
-- ✅ Existing 155+ test suite passes
+- ✅ Existing 283+ test suite passes
 - ✅ All 15 Claude Code tools execute correctly
 - ✅ Basic chat and streaming functionality maintained
 - ✅ Tool security controls function properly
@@ -691,7 +691,7 @@ For each test:
 **Server Version**: OpenRouter Anthropic Server v2.0
 
 ### Core Test Results
-- [ ] Phase 0: Existing Test Suite (155+ tests)
+- [ ] Phase 0: Existing Test Suite (283+ tests)
 - [ ] Phase 1: Environment Setup & Feature Detection
 - [ ] Phase 2: Core Messaging & Streaming
 - [ ] Phase 3: Tool Execution System (15 tools)

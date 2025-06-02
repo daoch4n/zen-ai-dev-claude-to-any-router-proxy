@@ -361,8 +361,8 @@ class TestEnhancedDebugLogger:
         """Set up test method."""
         self.temp_dir = tempfile.mkdtemp()
         
-        # Mock config to use temp directory
-        with patch('src.utils.debug.config') as mock_config:
+        # Mock config at the coordinator level where it's actually used
+        with patch('src.coordinators.debug_coordinator.config') as mock_config:
             mock_config.debug_logs_dir = self.temp_dir
             mock_config.debug_enabled = True
             mock_config.instructor_enabled = True

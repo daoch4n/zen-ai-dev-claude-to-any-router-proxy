@@ -1,19 +1,16 @@
 """
-MCP server management API endpoints.
+MCP server management API endpoints - Refactored.
 
 This router provides REST API endpoints for managing MCP servers,
-integrating with the lifecycle service and workflow orchestration.
+using the modular task-flow-coordinator architecture.
 """
 
-from typing import Dict, List, Any, Optional
-from fastapi import APIRouter, HTTPException, Query
+from typing import Dict, List, Any
+from fastapi import APIRouter, Query
 from pydantic import BaseModel, Field
 
-from src.mcp.lifecycle_service import lifecycle_service
-from src.mcp.server_configs import config_manager
-from src.core.logging_config import get_logger
+from src.coordinators.mcp_coordinator import mcp_coordinator
 
-logger = get_logger(__name__)
 router = APIRouter(prefix="/v1/mcp", tags=["MCP Management"])
 
 
@@ -33,12 +30,12 @@ class MCPServerStatusResponse(BaseModel):
     name: str
     status: str
     running: bool
-    pid: Optional[int] = None
-    started_at: Optional[str] = None
-    uptime_seconds: Optional[float] = None
+    pid: int | None = None
+    started_at: str | None = None
+    uptime_seconds: float | None = None
     restart_count: int = 0
     health_status: str = "unknown"
-    last_health_check: Optional[str] = None
+    last_health_check: str | None = None
     config: Dict[str, Any] = Field(default_factory=dict)
 
 
@@ -66,37 +63,74 @@ class HealthCheckResponse(BaseModel):
 @router.get("/servers", response_model=List[str])
 async def list_available_servers():
     """List all available MCP servers from configuration."""
-    
-    request_logger = logger.bind(endpoint="list_available_servers")
-    request_logger.info("Listing available MCP servers")
-    
-    try:
-        servers = await lifecycle_service.get_available_servers()
-        
-        request_logger.info("Successfully retrieved available servers",
-                           count=len(servers))
-        
-        return servers
-        
-    except Exception as e:
-        request_logger.error("Failed to list available servers",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to list available servers: {str(e)}"
-        )
+    return await mcp_coordinator.list_servers()
 
 
 @router.get("/servers/{server_name}/status", response_model=MCPServerStatusResponse)
 async def get_server_status(server_name: str):
     """Get detailed status of a specific MCP server."""
-    
-    request_logger = logger.bind(
-        endpoint="get_server_status",
-        server_name=server_name
+    result = await mcp_coordinator.get_server_status(server_name)
+    return MCPServerStatusResponse(**result)
+
+
+@router.get("/servers/status")
+async def get_all_servers_status():
+    """Get status of all MCP servers."""
+    return await mcp_coordinator.get_all_servers_status()
+
+
+@router.post("/servers/{server_name}/start")
+async def start_server(server_name: str):
+    """Start a specific MCP server."""
+    return await mcp_coordinator.start_server(server_name)
+
+
+@router.post("/servers/{server_name}/stop")
+async def stop_server(server_name: str, force: bool = Query(default=False)):
+    """Stop a specific MCP server."""
+    return await mcp_coordinator.stop_server(server_name, force=force)
+
+
+@router.post("/servers/{server_name}/restart")
+async def restart_server(server_name: str, force: bool = Query(default=False)):
+    """Restart a specific MCP server."""
+    return await mcp_coordinator.restart_server(server_name, force=force)
+
+
+@router.post("/servers/start", response_model=MultiServerOperationResponse)
+async def start_multiple_servers(request: ServerStartRequest):
+    """Start multiple MCP servers."""
+    result = await mcp_coordinator.start_multiple_servers(request.server_names)
+    return MultiServerOperationResponse(**result)
+
+
+@router.post("/servers/stop", response_model=MultiServerOperationResponse)
+async def stop_multiple_servers(request: ServerStopRequest):
+    """Stop multiple MCP servers."""
+    result = await mcp_coordinator.stop_multiple_servers(
+        request.server_names,
+        force=request.force
     )
-    request_logger.info("Getting MCP server status")
+    return MultiServerOperationResponse(**result)
+
+
+@router.get("/health", response_model=HealthCheckResponse)
+async def health_check_all_servers():
+    """Perform health checks on all configured MCP servers."""
+    result = await mcp_coordinator.health_check_all_servers()
+    return HealthCheckResponse(**result)
+
+
+@router.get("/config/{server_name}")
+async def get_server_config(server_name: str):
+    """Get configuration for a specific MCP server."""
+    return mcp_coordinator.get_server_config(server_name)
+
+
+@router.get("/config")
+async def get_all_server_configs():
+    """Get configurations for all MCP servers."""
+    return mcp_coordinator.get_all_server_configs()
     
     try:
         # Check if server is configured

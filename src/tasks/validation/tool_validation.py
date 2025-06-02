@@ -13,7 +13,7 @@ from pydantic import ValidationError
 
 from ...core.logging_config import get_logger
 from ...models.instructor import ConversionResult
-from ...services.tool_execution import ToolExecutionResult
+from ...tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 
 # Initialize logging
 logger = get_logger("tool_validation")

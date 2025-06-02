@@ -11,12 +11,7 @@ from typing import Any, Dict, List, Optional
 
 from ..core.logging_config import get_logger
 from ..services.context_manager import ContextManager
-from ..services.tool_execution import ToolExecutionResult
-from ..flows.tool_execution import (
-    TOOL_FLOW_MAPPING,
-    get_flow_for_tool,
-    get_concurrency_strategy
-)
+from ..tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 
 # Initialize logging and context management
 logger = get_logger("tool_coordinator")
@@ -76,7 +71,8 @@ class ToolCoordinator:
                        tool_call_id=tool_call_id,
                        has_input=bool(tool_input))
             
-            # Get the appropriate flow for this tool
+            # Get the appropriate flow for this tool (lazy import to avoid circular import)
+            from ..flows.tool_execution.tool_mapping import get_flow_for_tool
             flow_function = get_flow_for_tool(tool_name)
             
             if not flow_function:

@@ -9,8 +9,8 @@ servers:
     command: "uvx mcp-server-fetch"
     python_version: "3.11"
     environment:
-      PATH: "/home/luke/.local/bin:$PATH"
-      PYTHONPATH: "/home/luke/.local/lib/python3.11/site-packages"
+      PATH: "$HOME/.local/bin:$PATH"
+      PYTHONPATH: "$HOME/.local/lib/python3.11/site-packages"
     health_check:
       enabled: true
       endpoint: "http://localhost:3001/health"
@@ -27,7 +27,7 @@ servers:
     command: "npx @modelcontextprotocol/server-puppeteer"
     node_version: "20.18.1"
     environment:
-      PATH: "/home/luke/.nvm/versions/node/v20.18.1/bin:$PATH"
+      PATH: "$HOME/.nvm/versions/node/v20.18.1/bin:$PATH"
       PUPPETEER_SKIP_CHROMIUM_DOWNLOAD: "true"
       NODE_ENV: "production"
     health_check:
@@ -43,10 +43,10 @@ servers:
     name: "python_code_assistant"
     description: "MCP server for Python code analysis and modification"
     type: "nodejs"
-    command: "node /home/luke/Documents/Cline/MCP/python-code-assistant/build/index.js"
+    command: "node $HOME/Documents/Cline/MCP/python-code-assistant/build/index.js"
     node_version: "20.18.1"
     environment:
-      PATH: "/home/luke/.nvm/versions/node/v20.18.1/bin:$PATH"
+      PATH: "$HOME/.nvm/versions/node/v20.18.1/bin:$PATH"
       NODE_ENV: "production"
     health_check:
       enabled: false  # Uses stdio transport, no HTTP endpoint

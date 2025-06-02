@@ -9,7 +9,7 @@ from typing import Any, Dict, List
 
 from prefect import flow
 
-from ...services.tool_execution import ToolExecutionResult
+from ...tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 from ...core.logging_config import get_logger
 from ...services.context_manager import ContextManager
 from ...tasks.tools.search_tools import (

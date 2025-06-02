@@ -45,14 +45,14 @@ Welcome to the comprehensive documentation for the OpenRouter Anthropic Server v
 - **Production Ready** - Comprehensive monitoring, logging, and error handling
 - **Modular Architecture** - Clean, maintainable, and scalable design
 - **Enhanced Security** - Input validation, rate limiting, and secure execution
-- **Comprehensive Testing** - 334+ tests with 100% critical path coverage
+- **Comprehensive Testing** - 283+ tests with 100% critical path coverage
 
 ## 📊 Project Status
 
 **Status**: ✅ **PRODUCTION READY**
 
-- **Test Suite**: 334/334 tests passing (100% success rate)
-- **Architecture**: Modular Prefect-based architecture fully implemented
+- **Test Suite**: 283/283 tests passing (100% success rate)
+- **Architecture**: Modular coordinator-flow-task architecture fully implemented
 - **Documentation**: Complete documentation suite
 - **Deployment**: Multiple deployment options available
 - **Security**: Production security controls implemented

@@ -17,6 +17,7 @@ volumes/
 # Logs
 *.log
 logs/
+debug_logs
 docker-compose.override.yml
 test_results/
 test_debug_logs/

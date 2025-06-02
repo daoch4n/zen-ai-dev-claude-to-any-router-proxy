@@ -10,7 +10,7 @@ from typing import Any, Dict
 
 from prefect import task
 
-from ...services.tool_execution import ToolExecutionResult
+from ...tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 from ...core.logging_config import get_logger
 from ...services.context_manager import ContextManager
 

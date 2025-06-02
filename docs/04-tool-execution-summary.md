@@ -73,7 +73,7 @@ Tool execution metrics available at `/tool-metrics`:
 
 ## Testing
 
-155+ tests including comprehensive tool executor tests:
+283+ tests including comprehensive tool executor tests:
 - Unit tests for each tool executor
 - Security validation tests
 - Metrics tracking tests

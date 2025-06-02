@@ -10,7 +10,8 @@ from prefect import flow, task
 from dataclasses import dataclass
 
 from src.core.logging_config import get_logger
-from src.services.tool_execution import ToolExecutionService, ToolExecutionResult
+from src.services.tool_execution import ToolExecutionService
+from src.tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 from src.services.context_manager import ContextManager
 
 logger = get_logger(__name__)
@@ -176,7 +177,7 @@ async def execute_single_tool(
         )
         
         # Return error result
-        from src.services.tool_execution import ToolExecutionResult
+        from src.tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
         return ToolExecutionResult(
             tool_name=tool_block.get('name'),
             tool_call_id=tool_block.get('id'),

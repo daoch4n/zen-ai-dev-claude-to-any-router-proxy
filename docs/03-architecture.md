@@ -2,7 +2,7 @@
 
 ## OpenRouter Anthropic Server v2.0 - Production Architecture
 
-This document provides an overview of the current production architecture of the OpenRouter Anthropic Server v2.0 after the comprehensive Phase 6 refactoring to a modular, task-based architecture.
+This document provides an overview of the current production architecture of the OpenRouter Anthropic Server v2.0 after the comprehensive Phase 7 refactoring to a modular coordinator-flow-task architecture.
 
 ## 🏗️ System Architecture
 
@@ -369,7 +369,7 @@ All model names are automatically prefixed with `openrouter/` for proper LiteLLM
 
 ### Maintainability
 - **Type safety** with full type hints
-- **Comprehensive testing** (334+ tests)
+- **Comprehensive testing** (283+ tests)
 - **Clear documentation** and code comments
 - **Consistent coding standards**
 - **Modular task organization** for easy maintenance
