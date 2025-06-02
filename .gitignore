@@ -18,6 +18,11 @@ volumes/
 *.log
 logs/
 docker-compose.override.yml
+test_results/
+test_debug_logs/
+**/test_logs/
+**/integration_logs/
+**/temp_*
 
 # OS generated files
 .DS_Store
@@ -39,6 +44,9 @@ Thumbs.db
 *.tmp
 *.temp
 .cache/
+.pytest_cache
+__pycache__
+.venv
 
 # Backup files
 *.bak
@@ -49,3 +57,5 @@ Thumbs.db
 **/.history/
 
 .claude
+.cursor
+.roo
