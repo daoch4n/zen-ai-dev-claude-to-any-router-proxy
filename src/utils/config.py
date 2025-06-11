@@ -21,6 +21,7 @@ class ServerConfig(BaseModel):
     
     # API Configuration
     openrouter_api_key: str = Field(..., description="OpenRouter API key")
+    openrouter_base_url: str = Field(default="https://openrouter.ai/api/v1", description="OpenRouter API base URL")
     host: str = Field(..., description="Server host")
     port: int = Field(..., description="Server port")
     
@@ -167,6 +168,7 @@ class ServerConfig(BaseModel):
         
         return cls(
             openrouter_api_key=os.environ["OPENROUTER_API_KEY"],
+            openrouter_base_url=os.environ.get("OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"),
             host=os.environ["HOST"],
             port=int(os.environ["PORT"]),
             big_model=os.environ["ANTHROPIC_MODEL"],

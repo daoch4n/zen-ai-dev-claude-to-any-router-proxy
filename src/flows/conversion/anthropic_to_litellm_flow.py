@@ -127,7 +127,7 @@ class AnthropicToLiteLLMFlow(ConversionService[MessagesRequest, LiteLLMRequest],
     def _convert_tools(self, source: MessagesRequest, metadata: Dict[str, Any]) -> List[Dict[str, Any]]:
         """Convert tools to LiteLLM format."""
         if not source.tools:
-            return None
+            return []
         
         litellm_tools = []
         logger.debug("Processing tools from request", tool_count=len(source.tools))
@@ -167,7 +167,7 @@ class AnthropicToLiteLLMFlow(ConversionService[MessagesRequest, LiteLLMRequest],
             "temperature": source.temperature or 1.0,
             "stream": source.stream or False,
             "api_key": config.openrouter_api_key,
-            "api_base": "https://openrouter.ai/api/v1",
+            "api_base": config.openrouter_base_url,
             "extra_headers": {
                 "HTTP-Referer": "https://github.com/openrouter-anthropic-server",
                 "X-Title": "OpenRouter Anthropic Server"
