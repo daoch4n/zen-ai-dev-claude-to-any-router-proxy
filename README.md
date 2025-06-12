@@ -1,6 +1,6 @@
-# OpenRouter Anthropic Server v2.0
+# Any Router Anthropic Server v2.0
 
-A production-ready, modular API proxy server that provides enhanced functionality for interacting with Anthropic's Claude models through OpenRouter with complete tool execution capabilities.
+A production-ready, modular API proxy server that provides enhanced functionality for interacting with Anthropic's Claude models through OpenRouter, Chutes or similar projects with complete tool execution capabilities.
 
 ## 🚀 Quick Start
 
@@ -10,6 +10,7 @@ uv sync
 
 # Set your OpenRouter API key
 export OPENROUTER_API_KEY="your-api-key-here"
+export OPENROUTER_BASE_URL="https://your-router.here"
 
 # Start the server
 python start_server.py
@@ -75,7 +76,7 @@ The server uses a modular, task-based architecture with:
 - **FastAPI** for high-performance API endpoints
 - **Prefect** for workflow orchestration and task management
 - **Pydantic** for type safety and validation
-- **LiteLLM** for OpenRouter integration
+- **LiteLLM** for Any router integration
 - **Instructor** for structured outputs
 
 ```
