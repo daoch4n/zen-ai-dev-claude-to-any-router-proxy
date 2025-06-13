@@ -8,7 +8,7 @@ A production-ready, modular API proxy server that provides enhanced functionalit
 # Install dependencies
 uv sync
 
-# Set your OpenRouter API key
+# Set your Router API key and URL (defaults to OpenRouter)
 export OPENROUTER_API_KEY="your-api-key-here"
 export OPENROUTER_BASE_URL="https://your-router.here"
 
@@ -108,8 +108,9 @@ Visit [`docs/`](docs/) for comprehensive documentation:
 # Install dependencies
 uv sync
 
-# Configure environment
+# Configure environment , API key and URL (defaults to OpenRouter)
 export OPENROUTER_API_KEY="your-api-key"
+export OPENROUTER_BASE_URL="https://your-router.here"
 export ENVIRONMENT="production"
 
 # Start server
@@ -140,7 +141,10 @@ docker-compose up -d
 ## 🔧 Configuration
 
 ### Required Environment Variables
-- `OPENROUTER_API_KEY` - Your OpenRouter API key
+- `OPENROUTER_API_KEY` - Your Router API key
+
+### Recommended Environment Variables
+- `OPENROUTER_BASE_URL` - Any OpenRouter-compatible Router URL address (OpenRouter, Chutes, etc..) [Defaults to OpenRouter]
 
 ### Optional Environment Variables
 - `ENVIRONMENT` - Environment mode (`development`/`production`)
@@ -282,4 +286,4 @@ For issues and questions:
 
 ---
 
-**OpenRouter Anthropic Server v2.0** - Bridging Claude's capabilities with production reliability.
+**Any Router Anthropic Server v2.0** - Bridging Claude's capabilities with production reliability.
