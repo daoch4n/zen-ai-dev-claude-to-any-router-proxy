@@ -37,11 +37,11 @@ def validate_tool_input(tool_name: str, tool_input: Dict[str, Any]) -> bool:
     
     # Add specific validation rules per tool type
     if tool_name == 'Write':
-        if 'path' not in tool_input or 'content' not in tool_input:
-            raise ToolValidationError("Write tool requires 'path' and 'content' parameters")
+        if 'file_path' not in tool_input or 'content' not in tool_input:
+            raise ToolValidationError("Write tool requires 'file_path' and 'content' parameters")
     elif tool_name == 'Read':
-        if 'path' not in tool_input:
-            raise ToolValidationError("Read tool requires 'path' parameter")
+        if 'file_path' not in tool_input:
+            raise ToolValidationError("Read tool requires 'file_path' parameter")
     elif tool_name == 'Bash':
         if 'command' not in tool_input:
             raise ToolValidationError("Bash tool requires 'command' parameter")

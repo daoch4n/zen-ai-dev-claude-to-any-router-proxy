@@ -202,7 +202,7 @@ class TestServerConfig:
         
         instructor_config = config.get_instructor_config()
         assert instructor_config["enabled"] is True
-        assert instructor_config["model"] == "anthropic/claude-3-5-sonnet-20241022"
+        assert instructor_config["model"] == "anthropic/claude-sonnet-4"
     
     def test_performance_config(self, test_config):
         """Test performance configuration."""

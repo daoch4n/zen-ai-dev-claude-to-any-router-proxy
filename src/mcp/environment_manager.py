@@ -261,8 +261,9 @@ class MCPEnvironmentManager:
         
         elif config.type == "nodejs" and config.node_version:
             # Add Node.js version specific paths
-            node_path = f"/home/luke/.nvm/versions/node/v{config.node_version}/bin"
-            if Path(node_path).exists():
+            home_dir = Path.home()
+            node_path = home_dir / ".nvm" / "versions" / "node" / f"v{config.node_version}" / "bin"
+            if node_path.exists():
                 env["PATH"] = f"{node_path}:{env.get('PATH', '')}"
         
         self.logger.debug("Prepared server environment",

@@ -148,5 +148,6 @@ class LiteLLMToAnthropicFlow(ConversionService[LiteLLMRequest, MessagesRequest],
             request_data["stop_sequences"] = source.stop
         if anthropic_tools:
             request_data["tools"] = [tool.model_dump() for tool in anthropic_tools]
-        if source.tool_choice:
-            request_data["tool_choice"] = convert_litellm_tool_choice_to_anthropic(source.tool_choice)
+            # Only add tool_choice if we have tools to send
+            if source.tool_choice:
+                request_data["tool_choice"] = convert_litellm_tool_choice_to_anthropic(source.tool_choice)

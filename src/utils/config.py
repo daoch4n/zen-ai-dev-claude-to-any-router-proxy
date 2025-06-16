@@ -8,6 +8,10 @@ from dotenv import load_dotenv
 # Load environment variables first
 load_dotenv()
 
+# API Base URL Constants
+OPENROUTER_API_BASE = "https://openrouter.ai/api/v1"
+ANTHROPIC_API_BASE = "https://api.anthropic.com/v1"
+
 # Import logging after env loading to avoid circular imports
 try:
     from src.core.logging_config import get_logger
@@ -47,7 +51,7 @@ class ServerConfig(BaseModel):
     
     # Instructor Configuration
     instructor_enabled: bool = True
-    instructor_model: str = "anthropic/claude-3-5-sonnet-20241022"
+    instructor_model: str = "anthropic/claude-sonnet-4"
     
     # Tool execution configuration
     tool_execution_enabled: bool = True
@@ -84,6 +88,82 @@ class ServerConfig(BaseModel):
     enable_caching: bool = Field(..., description="Enable response caching")
     cache_ttl: int = Field(..., description="Cache TTL in seconds")
     max_concurrent_requests: int = Field(..., description="Max concurrent requests")
+    
+    # LiteLLM Configuration
+    litellm_timeout: int = Field(default=120, description="LiteLLM request timeout")
+    litellm_num_retries: int = Field(default=3, description="Number of retries for failed requests") 
+    litellm_retry_delay: float = Field(default=1.0, description="Delay between retries in seconds")
+    litellm_rpm: int = Field(default=10000, description="Requests per minute limit")
+    litellm_tpm: int = Field(default=200000, description="Tokens per minute limit")
+    
+    # LiteLLM settings
+    litellm_api_base: Optional[str] = Field(None, env="LITELLM_API_BASE")
+    litellm_master_key: Optional[str] = Field(None, env="LITELLM_MASTER_KEY")
+    litellm_base_url: Optional[str] = Field(None, env="LITELLM_BASE_URL")
+    
+    # Cache Configuration (Enhanced for LiteLLM)
+    cache_type: str = Field(default="local", description="Cache type: local, redis")
+    redis_host: str = Field(default="localhost", description="Redis host for caching")
+    redis_port: int = Field(default=6379, description="Redis port")
+    redis_password: Optional[str] = Field(default=None, description="Redis password")
+    redis_url: Optional[str] = Field(default=None, description="Redis connection URL")
+    
+    # Budget and Cost Management (LiteLLM features)
+    budget_tracking_enabled: bool = Field(default=False, description="Enable budget tracking")
+    max_budget_usd: Optional[float] = Field(default=None, description="Maximum budget in USD")
+    budget_duration: str = Field(default="monthly", description="Budget duration: daily, weekly, monthly")
+    cost_tracking_enabled: bool = Field(default=True, description="Enable cost tracking")
+    
+    # Health Monitoring
+    health_check_enabled: bool = Field(default=True, description="Enable health monitoring")
+    health_check_interval: int = Field(default=60, description="Health check interval in seconds")
+    model_health_checks: bool = Field(default=True, description="Enable model connectivity health checks")
+    
+    # Audit and Logging (LiteLLM enterprise features)
+    audit_logging_enabled: bool = Field(default=False, description="Enable audit logging")
+    request_logging_enabled: bool = Field(default=True, description="Enable request logging")
+    response_logging_enabled: bool = Field(default=False, description="Enable response logging")
+    
+    # Performance and Scaling
+    connection_pool_size: int = Field(default=100, description="HTTP connection pool size")
+    max_concurrent_litellm_requests: int = Field(default=50, description="Max concurrent LiteLLM requests")
+    
+    # Provider Configuration
+    fallback_providers: List[str] = Field(
+        default_factory=lambda: ["openrouter", "anthropic"],
+        description="Fallback provider order"
+    )
+    provider_timeout_override: Dict[str, int] = Field(
+        default_factory=dict,
+        description="Per-provider timeout overrides"
+    )
+    
+    # Unified Proxy Backend Configuration
+    proxy_backend: str = Field(default="OPENROUTER", description="Proxy backend: AZURE_DATABRICKS, OPENROUTER, or LITELLM_OPENROUTER")
+    
+    # LiteLLM Bypass Configuration
+    openrouter_api_base: str = Field(default="https://openrouter.ai/api/v1", description="OpenRouter API base URL")
+    openrouter_direct_timeout: int = Field(default=120, description="Direct OpenRouter request timeout")
+    openrouter_direct_retries: int = Field(default=3, description="Direct OpenRouter retry attempts")
+    openrouter_direct_model_format: str = Field(default="anthropic/claude-sonnet-4", description="Model format for direct calls")
+    bypass_fallback_enabled: bool = Field(default=True, description="Enable fallback to LiteLLM if bypass fails")
+    
+    # Azure Databricks Configuration
+    databricks_host: Optional[str] = Field(default=None, description="Azure Databricks workspace instance (e.g., adb-1234567890123456.7)")
+    databricks_token: Optional[str] = Field(default=None, description="Azure Databricks Personal Access Token")
+    databricks_timeout: float = Field(default=30.0, description="Azure Databricks request timeout in seconds")
+    databricks_max_retries: int = Field(default=3, description="Azure Databricks maximum retry attempts")
+    databricks_claude_sonnet_4_endpoint: str = Field(default="databricks-claude-sonnet-4", description="Azure Databricks Claude Sonnet 4 endpoint name")
+    databricks_claude_3_7_sonnet_endpoint: str = Field(default="databricks-claude-3-7-sonnet", description="Azure Databricks Claude 3.7 Sonnet endpoint name")
+    
+    @field_validator('proxy_backend')
+    @classmethod
+    def validate_proxy_backend(cls, v):
+        """Validate proxy backend is valid."""
+        valid_backends = ["AZURE_DATABRICKS", "OPENROUTER", "LITELLM_OPENROUTER", "LITELLM_MESSAGES"]
+        if v.upper() not in valid_backends:
+            raise ValueError(f"Proxy backend must be one of: {valid_backends}")
+        return v.upper()
     
     @field_validator('openrouter_api_key')
     @classmethod
@@ -136,6 +216,25 @@ class ServerConfig(BaseModel):
         return v
     
     @classmethod
+    def _determine_proxy_backend(cls) -> str:
+        """
+        Determine proxy backend from environment variables.
+        
+        Uses PROXY_BACKEND environment variable, defaults to OPENROUTER if not set.
+        """
+        # Check if PROXY_BACKEND is explicitly set
+        proxy_backend = os.environ.get("PROXY_BACKEND")
+        if proxy_backend:
+            valid_backends = ["AZURE_DATABRICKS", "OPENROUTER", "LITELLM_OPENROUTER", "LITELLM_MESSAGES"]
+            if proxy_backend.upper() in valid_backends:
+                return proxy_backend.upper()
+            else:
+                raise ValueError(f"Invalid PROXY_BACKEND value: {proxy_backend}. Must be one of: {valid_backends}")
+        
+        # Default to OPENROUTER
+        return "OPENROUTER"
+    
+    @classmethod
     def from_env(cls) -> "ServerConfig":
         """Create configuration from environment variables."""
         # Validate required environment variables
@@ -186,7 +285,67 @@ class ServerConfig(BaseModel):
             json_logs=os.environ.get("JSON_LOGS", "false").lower() == "true",
             unified_logs_dir=os.environ.get("UNIFIED_LOGS_DIR", "logs"),
             unified_log_file_rotation=os.environ.get("UNIFIED_LOG_FILE_ROTATION", "daily"),
-            unified_log_retention_days=int(os.environ.get("UNIFIED_LOG_RETENTION_DAYS", "30"))
+            unified_log_retention_days=int(os.environ.get("UNIFIED_LOG_RETENTION_DAYS", "30")),
+            
+            # LiteLLM Configuration
+            litellm_timeout=int(os.environ.get("LITELLM_TIMEOUT", "120")),
+            litellm_num_retries=int(os.environ.get("LITELLM_NUM_RETRIES", "3")),
+            litellm_retry_delay=float(os.environ.get("LITELLM_RETRY_DELAY", "1.0")),
+            litellm_rpm=int(os.environ.get("LITELLM_RPM", "10000")),
+            litellm_tpm=int(os.environ.get("LITELLM_TPM", "200000")),
+            
+            # LiteLLM settings
+            litellm_api_base=os.environ.get("LITELLM_API_BASE"),
+            litellm_master_key=os.environ.get("LITELLM_MASTER_KEY"),
+            litellm_base_url=os.environ.get("LITELLM_BASE_URL"),
+            
+            # Enhanced Cache Configuration
+            cache_type=os.environ.get("CACHE_TYPE", "local"),
+            redis_host=os.environ.get("REDIS_HOST", "localhost"),
+            redis_port=int(os.environ.get("REDIS_PORT", "6379")),
+            redis_password=os.environ.get("REDIS_PASSWORD"),
+            redis_url=os.environ.get("REDIS_URL"),
+            
+            # Budget and Cost Management
+            budget_tracking_enabled=os.environ.get("BUDGET_TRACKING_ENABLED", "false").lower() == "true",
+            max_budget_usd=float(os.environ["MAX_BUDGET_USD"]) if os.environ.get("MAX_BUDGET_USD") else None,
+            budget_duration=os.environ.get("BUDGET_DURATION", "monthly"),
+            cost_tracking_enabled=os.environ.get("COST_TRACKING_ENABLED", "true").lower() == "true",
+            
+            # Health Monitoring
+            health_check_enabled=os.environ.get("HEALTH_CHECK_ENABLED", "true").lower() == "true",
+            health_check_interval=int(os.environ.get("HEALTH_CHECK_INTERVAL", "60")),
+            model_health_checks=os.environ.get("MODEL_HEALTH_CHECKS", "true").lower() == "true",
+            
+            # Audit and Logging
+            audit_logging_enabled=os.environ.get("AUDIT_LOGGING_ENABLED", "false").lower() == "true",
+            request_logging_enabled=os.environ.get("REQUEST_LOGGING_ENABLED", "true").lower() == "true",
+            response_logging_enabled=os.environ.get("RESPONSE_LOGGING_ENABLED", "false").lower() == "true",
+            
+            # Performance and Scaling
+            connection_pool_size=int(os.environ.get("CONNECTION_POOL_SIZE", "100")),
+            max_concurrent_litellm_requests=int(os.environ.get("MAX_CONCURRENT_LITELLM_REQUESTS", "50")),
+            
+            # Provider Configuration
+            fallback_providers=os.environ.get("FALLBACK_PROVIDERS", "openrouter,anthropic").split(","),
+            
+            # Unified Proxy Backend Configuration with backward compatibility
+            proxy_backend=cls._determine_proxy_backend(),
+            
+            # LiteLLM Bypass Configuration
+            openrouter_api_base=os.environ.get("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
+            openrouter_direct_timeout=int(os.environ.get("OPENROUTER_DIRECT_TIMEOUT", "120")),
+            openrouter_direct_retries=int(os.environ.get("OPENROUTER_DIRECT_RETRIES", "3")),
+            openrouter_direct_model_format=os.environ.get("OPENROUTER_DIRECT_MODEL_FORMAT", "anthropic/claude-sonnet-4"),
+            bypass_fallback_enabled=os.environ.get("BYPASS_FALLBACK_ENABLED", "true").lower() == "true",
+            
+            # Azure Databricks Configuration
+            databricks_host=os.environ.get("DATABRICKS_HOST"),
+            databricks_token=os.environ.get("DATABRICKS_TOKEN"),
+            databricks_timeout=float(os.environ.get("DATABRICKS_TIMEOUT", "30.0")),
+            databricks_max_retries=int(os.environ.get("DATABRICKS_MAX_RETRIES", "3")),
+            databricks_claude_sonnet_4_endpoint=os.environ.get("DATABRICKS_CLAUDE_SONNET_4_ENDPOINT", "databricks-claude-sonnet-4"),
+            databricks_claude_3_7_sonnet_endpoint=os.environ.get("DATABRICKS_CLAUDE_3_7_SONNET_ENDPOINT", "databricks-claude-3-7-sonnet"),
         )
     
     def get_model_mapping(self) -> Dict[str, str]:
@@ -252,6 +411,26 @@ class ServerConfig(BaseModel):
             "request_timeout": self.request_timeout
         }
     
+    def get_openrouter_extensions_config(self) -> Dict[str, Any]:
+        """Get OpenRouter extension configuration from environment variables."""
+        # Import here to avoid circular imports
+        try:
+            from src.tasks.conversion.openrouter_extensions import get_openrouter_config_from_env
+            return get_openrouter_config_from_env()
+        except ImportError:
+            # Fallback if module not available
+            return {}
+    
+    def get_openai_advanced_config(self) -> Dict[str, Any]:
+        """Get OpenAI advanced parameters configuration from environment variables."""
+        # Import here to avoid circular imports
+        try:
+            from src.tasks.conversion.openai_advanced_parameters import get_openai_advanced_config_from_env
+            return get_openai_advanced_config_from_env()
+        except ImportError:
+            # Fallback if module not available
+            return {}
+    
     def is_development(self) -> bool:
         """Check if running in development mode."""
         return self.debug_enabled or self.log_level == "DEBUG"
@@ -259,6 +438,192 @@ class ServerConfig(BaseModel):
     def is_production(self) -> bool:
         """Check if running in production mode."""
         return not self.is_development()
+    
+    def get_litellm_config(self) -> Dict[str, Any]:
+        """Get comprehensive LiteLLM configuration."""
+        return {
+            "timeout": self.litellm_timeout,
+            "num_retries": self.litellm_num_retries,
+            "retry_delay": self.litellm_retry_delay,
+            "rpm": self.litellm_rpm,
+            "tpm": self.litellm_tpm,
+            "cache_enabled": self.enable_caching,
+            "cache_type": self.cache_type,
+            "fallback_providers": self.fallback_providers
+        }
+    
+    def get_cache_config(self) -> Dict[str, Any]:
+        """Get enhanced cache configuration for LiteLLM."""
+        config = {
+            "enabled": self.enable_caching,
+            "ttl": self.cache_ttl,
+            "type": self.cache_type
+        }
+        
+        if self.cache_type == "redis":
+            config.update({
+                "host": self.redis_host,
+                "port": self.redis_port,
+                "password": self.redis_password,
+                "url": self.redis_url
+            })
+        
+        return config
+    
+    def get_budget_config(self) -> Dict[str, Any]:
+        """Get budget and cost tracking configuration."""
+        return {
+            "budget_tracking_enabled": self.budget_tracking_enabled,
+            "max_budget_usd": self.max_budget_usd,
+            "budget_duration": self.budget_duration,
+            "cost_tracking_enabled": self.cost_tracking_enabled
+        }
+    
+    def get_health_config(self) -> Dict[str, Any]:
+        """Get health monitoring configuration."""
+        return {
+            "health_check_enabled": self.health_check_enabled,
+            "health_check_interval": self.health_check_interval,
+            "model_health_checks": self.model_health_checks
+        }
+    
+    def get_audit_config(self) -> Dict[str, Any]:
+        """Get audit and logging configuration."""
+        return {
+            "audit_logging_enabled": self.audit_logging_enabled,
+            "request_logging_enabled": self.request_logging_enabled,
+            "response_logging_enabled": self.response_logging_enabled
+        }
+    
+    def get_litellm_params(self) -> Dict[str, Any]:
+        """Get LiteLLM_Params compatible configuration."""
+        params = {
+            "timeout": self.litellm_timeout,
+            "max_retries": self.litellm_num_retries,
+            "rpm": self.litellm_rpm,
+            "tpm": self.litellm_tpm
+        }
+        
+        if self.max_budget_usd:
+            params["max_budget"] = self.max_budget_usd
+            params["budget_duration"] = self.budget_duration
+        
+        return params
+    
+    def get_bypass_config(self) -> Dict[str, Any]:
+        """Get LiteLLM bypass configuration."""
+        return {
+            "enabled": self.is_openrouter_backend(),
+            "api_base": self.openrouter_api_base,
+            "timeout": self.openrouter_direct_timeout,
+            "retries": self.openrouter_direct_retries,
+            "model_format": self.openrouter_direct_model_format,
+            "fallback_enabled": self.bypass_fallback_enabled,
+            "api_key": self.openrouter_api_key
+        }
+    
+    def get_bypass_model_mapping(self) -> Dict[str, str]:
+        """Get model mapping for bypass mode with correct OpenRouter model names."""
+        # OpenRouter model mapping using the configured model names
+        bypass_mapping = {
+            # Map config models to valid OpenRouter models
+            "anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4",
+            "anthropic/claude-3.7-sonnet": "anthropic/claude-3.7-sonnet",
+            "openrouter/anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4",
+            "openrouter/anthropic/claude-3.7-sonnet": "anthropic/claude-3.7-sonnet",
+            
+            # Direct OpenRouter model mappings
+            "claude-sonnet-4": "anthropic/claude-sonnet-4",
+            "claude-3.7-sonnet": "anthropic/claude-3.7-sonnet",
+            
+            # Legacy mappings
+            "big": "anthropic/claude-sonnet-4",
+            "small": "anthropic/claude-3.7-sonnet",
+            "sonnet": "anthropic/claude-sonnet-4",
+            "haiku": "anthropic/claude-3.7-sonnet",
+            "opus": "anthropic/claude-sonnet-4",  # Map to sonnet-4 as fallback
+            
+            # Common variations
+            "anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4",
+            "anthropic/claude-3.7-sonnet": "anthropic/claude-3.7-sonnet",
+            
+            # Handle any remaining openrouter/ prefixed models
+            "openrouter/anthropic/claude-sonnet-4": "anthropic/claude-sonnet-4",
+            "openrouter/anthropic/claude-3.7-sonnet": "anthropic/claude-3.7-sonnet"
+        }
+        
+        return bypass_mapping
+    
+    def get_databricks_config(self) -> Dict[str, Any]:
+        """Get Azure Databricks configuration."""
+        return {
+            "enabled": self.is_azure_databricks_backend(),
+            "host": self.databricks_host,
+            "token": self.databricks_token,
+            "timeout": self.databricks_timeout,
+            "max_retries": self.databricks_max_retries,
+            "endpoints": {
+                "claude_sonnet_4": self.databricks_claude_sonnet_4_endpoint,
+                "claude_3_7_sonnet": self.databricks_claude_3_7_sonnet_endpoint
+            }
+        }
+    
+    def get_databricks_model_mapping(self) -> Dict[str, str]:
+        """Get model mapping for Azure Databricks endpoints."""
+        return {
+            # Standard Claude model names to Azure Databricks endpoints
+            "claude-sonnet-4": self.databricks_claude_sonnet_4_endpoint,
+            "claude-3.7-sonnet": self.databricks_claude_3_7_sonnet_endpoint,
+            "claude-3-7-sonnet": self.databricks_claude_3_7_sonnet_endpoint,
+            
+            # Anthropic format models
+            "anthropic/claude-sonnet-4": self.databricks_claude_sonnet_4_endpoint,
+            "anthropic/claude-3.7-sonnet": self.databricks_claude_3_7_sonnet_endpoint,
+            "anthropic/claude-3-7-sonnet": self.databricks_claude_3_7_sonnet_endpoint,
+            
+            # Generic mappings
+            "sonnet-4": self.databricks_claude_sonnet_4_endpoint,
+            "3.7-sonnet": self.databricks_claude_3_7_sonnet_endpoint,
+            "sonnet": self.databricks_claude_3_7_sonnet_endpoint,  # Default to 3.7
+            "big": self.databricks_claude_sonnet_4_endpoint,
+            "small": self.databricks_claude_3_7_sonnet_endpoint,
+            
+            # Version-specific mappings
+            "claude-sonnet-4-20250514": self.databricks_claude_sonnet_4_endpoint,
+            "claude-3-7-sonnet-20250219": self.databricks_claude_3_7_sonnet_endpoint,
+            
+            # Direct endpoint names (passthrough)
+            self.databricks_claude_sonnet_4_endpoint: self.databricks_claude_sonnet_4_endpoint,
+            self.databricks_claude_3_7_sonnet_endpoint: self.databricks_claude_3_7_sonnet_endpoint,
+        }
+    
+    # Unified Proxy Backend Helper Methods
+    
+    def is_azure_databricks_backend(self) -> bool:
+        """Check if Azure Databricks backend is active."""
+        return self.proxy_backend == "AZURE_DATABRICKS"
+    
+    def is_openrouter_backend(self) -> bool:
+        """Check if OpenRouter direct backend is active."""
+        return self.proxy_backend == "OPENROUTER"
+    
+    def is_litellm_backend(self) -> bool:
+        """Check if LiteLLM + OpenRouter backend is active."""
+        return self.proxy_backend == "LITELLM_OPENROUTER"
+    
+    def get_active_backend(self) -> str:
+        """Get the active proxy backend."""
+        return self.proxy_backend
+    
+    def requires_databricks_config(self) -> bool:
+        """Check if Azure Databricks configuration is required."""
+        return self.is_azure_databricks_backend()
+    
+    def requires_openrouter_config(self) -> bool:
+        """Check if OpenRouter configuration is required."""
+        return self.is_openrouter_backend() or self.is_litellm_backend()
+    
+
 
 # Global configuration instance
 try:

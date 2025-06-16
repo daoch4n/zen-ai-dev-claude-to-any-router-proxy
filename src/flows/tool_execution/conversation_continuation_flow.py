@@ -7,7 +7,7 @@ from ...tasks.tool_execution.conversation_continuation_tasks import (
 from ...tasks.tool_execution.tool_result_formatting_tasks import ToolExecutionResult
 from ...models.anthropic import Message, MessagesRequest
 from ...services.http_client import HTTPClientService
-from ...utils.config import config
+from ...utils.config import config, OPENROUTER_API_BASE
 from ...utils.error_logger import log_error
 from ...core.logging_config import get_logger
 
@@ -99,7 +99,7 @@ class ConversationContinuationFlow:
             "temperature": litellm_request.get("temperature", original_request.temperature or 1.0),
             "stream": litellm_request.get("stream", original_request.stream or False),
             "api_key": config.openrouter_api_key,
-            "api_base": "https://openrouter.ai/api/v1",
+            "api_base": OPENROUTER_API_BASE,
             "extra_headers": {
                 "HTTP-Referer": "https://github.com/openrouter-anthropic-server",
                 "X-Title": "OpenRouter Anthropic Server - Tool Results"

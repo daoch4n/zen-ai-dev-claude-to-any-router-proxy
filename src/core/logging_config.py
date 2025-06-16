@@ -120,7 +120,7 @@ def configure_structlog(
         )
     else:
         processors.append(
-            structlog.processors.JSONRenderer()
+            structlog.processors.JSONRenderer(ensure_ascii=False)
         )
     
     # Configure structlog

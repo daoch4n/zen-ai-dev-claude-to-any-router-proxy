@@ -1,0 +1,120 @@
+# LiteLLM Proxy Configuration for LITELLM_MESSAGES Backend
+# This configuration enables LiteLLM's /v1/messages endpoint with OpenRouter models
+
+model_list:
+  # Primary Claude Models via OpenRouter
+  - model_name: claude-4-opus-20250522
+    litellm_params:
+      model: openrouter/anthropic/claude-opus-4
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+  - model_name: claude-sonnet-4-20250514
+    litellm_params:
+      model: openrouter/anthropic/claude-sonnet-4
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+  - model_name: claude-3-7-sonnet-20250219
+    litellm_params:
+      model: openrouter/anthropic/claude-3.7-sonnet
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter      
+
+  - model_name: claude-3-5-haiku
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-haiku
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+  - model_name: claude-3-5-haiku-20241022
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-haiku-20241022
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+  - model_name: claude-3-5-sonnet
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-sonnet
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+  - model_name: claude-3-5-sonnet-20240620
+    litellm_params:
+      model: openrouter/anthropic/claude-3.5-sonnet-20240620
+      api_key: os.environ/OPENROUTER_API_KEY
+      api_base: https://openrouter.ai/api/v1
+      custom_llm_provider: openrouter
+
+# General Settings
+general_settings:
+  # Optional: Add a master key for additional security
+  # master_key: sk-my_master_key
+  
+  # Optional: Database for usage tracking
+  # database_url: postgresql://user:pass@localhost:5432/litellm
+  
+  # Request timeout
+  request_timeout: 600  # 10 minutes
+  
+  # Max budget (optional)
+  # max_budget: 100  # $100 USD
+
+# LiteLLM Settings
+litellm_settings:
+  # Drop unsupported parameters for each provider
+  drop_params: true
+  
+  # Set verbosity
+  set_verbose: true
+  
+  # Success callback (optional)
+  # success_callback: ["langfuse"]
+  
+  # Failure callback (optional)
+  # failure_callback: ["sentry"]
+
+# Router Settings
+# router_settings:
+#   # Routing strategy: simple (no fallbacks needed)
+#   routing_strategy: "simple"
+  
+#   # Disable pre-call checks
+#   enable_pre_call_checks: false
+  
+#   # Cooldown time for failed models
+#   cooldown_time: 300  # 5 minutes
+  
+#   # Number of retries
+#   num_retries: 3
+  
+#   # Request timeout
+#   request_timeout: 600
+  
+#   # No fallback models configured - using Claude only
+  
+#   # Model group aliases (optional)
+#   model_group_alias:
+#     "claude-models": ["claude-sonnet-4", "claude-3-7-sonnet"]
+    
+  # Caching (optional - requires Redis)
+  # redis_url: "redis://localhost:6379"
+  # cache_responses: true
+  # cache_kwargs:
+  #   ttl: 3600  # 1 hour
+  #   namespace: "litellm_cache"
+  
+  # Rate limiting (disabled to avoid 429 errors)
+  # max_parallel_requests: 100
+  # rpm_limit: 1000  # Requests per minute
+  # tpm_limit: 1000000  # Tokens per minute
+
+# Environment Variables (loaded automatically from environment)
+# LiteLLM will automatically load OPENROUTER_API_KEY from environment
+# No need to explicitly list them here 

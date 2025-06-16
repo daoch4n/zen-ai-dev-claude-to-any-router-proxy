@@ -6,6 +6,11 @@ import json
 from ...models.anthropic import Message
 from ...models.litellm import LiteLLMMessage
 from ...core.logging_config import get_logger
+from .content_conversion_tasks import (
+    convert_image_content_anthropic_to_openai,
+    convert_content_blocks_anthropic_to_openai,
+    convert_content_blocks_openai_to_anthropic
+)
 
 logger = get_logger("conversion.message")
 
@@ -30,7 +35,7 @@ def extract_system_message_content(system: Union[str, List[Any]]) -> str:
 
 
 def convert_anthropic_message_to_litellm(message: Message, metadata: Dict[str, Any]) -> LiteLLMMessage:
-    """Convert Anthropic message to LiteLLM format."""
+    """Convert Anthropic message to LiteLLM format with enhanced multi-modal support."""
     if isinstance(message.content, str):
         # Simple text message
         return LiteLLMMessage(
@@ -39,14 +44,30 @@ def convert_anthropic_message_to_litellm(message: Message, metadata: Dict[str, A
         )
     
     elif isinstance(message.content, list):
-        # Complex message with content blocks
+        # Complex message with content blocks (including images)
         text_parts = []
         tool_calls = []
+        converted_content = []
+        has_multimodal_content = False
         
         for block in message.content:
             if hasattr(block, 'type'):
                 if block.type == "text":
-                    text_parts.append(getattr(block, 'text', ''))
+                    text_content = getattr(block, 'text', '')
+                    text_parts.append(text_content)
+                    converted_content.append({
+                        "type": "text",
+                        "text": text_content
+                    })
+                
+                elif block.type == "image":
+                    # Convert image block to OpenAI format
+                    image_content = convert_image_content_anthropic_to_openai(block.model_dump())
+                    converted_content.append(image_content)
+                    has_multimodal_content = True
+                    metadata["image_conversions"] = metadata.get("image_conversions", 0) + 1
+                    logger.debug("Converted image content block",
+                               media_type=block.model_dump().get("source", {}).get("media_type", "unknown"))
                 
                 elif block.type == "tool_use":
                     tool_call = {
@@ -58,19 +79,36 @@ def convert_anthropic_message_to_litellm(message: Message, metadata: Dict[str, A
                         }
                     }
                     tool_calls.append(tool_call)
-                    metadata["content_block_conversions"] += 1
+                    metadata["content_block_conversions"] = metadata.get("content_block_conversions", 0) + 1
                 
-                # Note: tool_result blocks are now handled at a higher level
-                # They create separate tool messages instead of being embedded in content
+                elif block.type == "tool_result":
+                    # Tool result blocks handled at higher level - convert to text for now
+                    tool_id = getattr(block, 'tool_use_id', 'unknown')
+                    content = getattr(block, 'content', '')
+                    text_parts.append(f"Tool {tool_id} result: {content}")
+                    converted_content.append({
+                        "type": "text",
+                        "text": f"Tool {tool_id} result: {content}"
+                    })
         
-        # Create LiteLLM message
-        if message.role == "assistant" and tool_calls:
+        # Create LiteLLM message based on content type
+        if has_multimodal_content or (len(converted_content) > 1 and not tool_calls):
+            # Multi-modal content - use content array format
+            return LiteLLMMessage(
+                role=message.role,
+                content=converted_content
+            )
+        
+        elif message.role == "assistant" and tool_calls:
+            # Assistant message with tool calls
             return LiteLLMMessage(
                 role="assistant",
                 content=" ".join(text_parts) if text_parts else None,
                 tool_calls=tool_calls
             )
+        
         else:
+            # Regular text message
             content = " ".join(text_parts) if text_parts else ""
             return LiteLLMMessage(
                 role=message.role,
@@ -86,7 +124,7 @@ def convert_anthropic_message_to_litellm(message: Message, metadata: Dict[str, A
 
 
 def convert_litellm_message_to_anthropic(litellm_message: LiteLLMMessage, metadata: Dict[str, Any]) -> Message:
-    """Convert LiteLLM message to Anthropic format."""
+    """Convert LiteLLM message to Anthropic format with enhanced multi-modal support."""
     # Extract role, ensuring it's valid for Anthropic
     role = litellm_message.role
     if role == "system":
@@ -121,9 +159,15 @@ def convert_litellm_message_to_anthropic(litellm_message: LiteLLMMessage, metada
                     "name": function.name,
                     "input": arguments
                 })
-                metadata["tool_call_conversions"] += 1
+                metadata["tool_call_conversions"] = metadata.get("tool_call_conversions", 0) + 1
         
         return Message(role=role, content=content_blocks)
+    
+    elif isinstance(litellm_message.content, list):
+        # Multi-modal content from OpenAI - convert back to Anthropic format
+        converted_blocks = convert_content_blocks_openai_to_anthropic(litellm_message.content)
+        metadata["multimodal_conversions"] = metadata.get("multimodal_conversions", 0) + 1
+        return Message(role=role, content=converted_blocks)
     
     else:
         # Simple text message

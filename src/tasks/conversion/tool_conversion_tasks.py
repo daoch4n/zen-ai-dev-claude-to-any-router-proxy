@@ -8,16 +8,48 @@ from ...core.logging_config import get_logger
 logger = get_logger("conversion.tool")
 
 
+def conservative_clean_openrouter_schema(schema: Any) -> Any:
+    """Conservatively clean OpenRouter schema - based on working openrouter_anthropic_server.py"""
+    if isinstance(schema, dict):
+        # Make a copy to avoid modifying original
+        cleaned = schema.copy()
+        
+        # Remove specific keys that are known to be unsupported by OpenRouter
+        cleaned.pop("additionalProperties", None)
+        cleaned.pop("default", None)
+        
+        # Check for unsupported 'format' in string types
+        if cleaned.get("type") == "string" and "format" in cleaned:
+            allowed_formats = {"enum", "date-time"}  # Safe subset
+            if cleaned["format"] not in allowed_formats:
+                logger.debug(f"Removing unsupported format '{cleaned['format']}' for string type in OpenRouter schema.")
+                cleaned.pop("format")
+        
+        # Recursively clean nested schemas
+        for key, value in list(cleaned.items()):
+            cleaned[key] = conservative_clean_openrouter_schema(value)
+        
+        return cleaned
+    elif isinstance(schema, list):
+        # Recursively clean items in a list
+        return [conservative_clean_openrouter_schema(item) for item in schema]
+    
+    return schema
+
+
 def convert_anthropic_tool_to_litellm(tool: Tool) -> Dict[str, Any]:
     """Convert Anthropic tool to LiteLLM format."""
-    return {
+    # Use standard OpenAI format with nested function object (this works!)
+    basic_tool = {
         "type": "function",
         "function": {
             "name": tool.name,
             "description": tool.description or "",
-            "parameters": clean_openrouter_tool_schema(tool.input_schema)
+            "parameters": conservative_clean_openrouter_schema(tool.input_schema)
         }
     }
+    
+    return basic_tool
 
 
 def convert_anthropic_tool_choice_to_litellm(tool_choice: Dict[str, Any]) -> Union[str, Dict[str, Any]]:
@@ -72,7 +104,7 @@ def convert_litellm_tool_choice_to_anthropic(tool_choice: Union[str, Dict[str, A
 def clean_openrouter_tool_schema(schema: Any) -> Any:
     """
     Recursively removes unsupported fields from a JSON schema for OpenRouter compatibility.
-    Based on the reference implementation from openrouter_anthropic_server.py
+    Also simplifies complex schemas to avoid OpenRouter's limits on tool complexity.
     """
     if isinstance(schema, dict):
         # Remove specific keys that might be unsupported by OpenRouter
@@ -97,6 +129,48 @@ def clean_openrouter_tool_schema(schema: Any) -> Any:
         return [clean_openrouter_tool_schema(item) for item in schema]
     
     return schema
+
+
+def simplify_tool_for_openrouter(tool: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Simplify tool definition for OpenRouter compatibility.
+    OpenRouter has strict limits on tool schema complexity.
+    """
+    if not isinstance(tool, dict) or "name" not in tool:
+        return tool
+    
+    simplified_tool = tool.copy()
+    
+    # Dramatically shorten descriptions
+    description = simplified_tool.get("description", "")
+    if len(description) > 200:
+        # Extract first sentence or first 150 chars
+        first_sentence = description.split('.')[0] + '.'
+        if len(first_sentence) <= 150:
+            simplified_tool["description"] = first_sentence
+        else:
+            simplified_tool["description"] = description[:150] + "..."
+    
+    # Simplify parameters schema
+    parameters = simplified_tool.get("parameters", {})
+    if isinstance(parameters, dict):
+        # Remove complex nested descriptions
+        properties = parameters.get("properties", {})
+        for prop_key, prop_value in properties.items():
+            if isinstance(prop_value, dict) and "description" in prop_value:
+                prop_desc = prop_value["description"]
+                if len(prop_desc) > 100:
+                    # Keep only first line or sentence
+                    first_line = prop_desc.split('\n')[0]
+                    if len(first_line) <= 100:
+                        prop_value["description"] = first_line
+                    else:
+                        prop_value["description"] = prop_desc[:97] + "..."
+    
+    # Clean the parameters schema
+    simplified_tool["parameters"] = clean_openrouter_tool_schema(parameters)
+    
+    return simplified_tool
 
 
 def find_tool_name_for_id(messages: List[Message], tool_use_id: str) -> str:

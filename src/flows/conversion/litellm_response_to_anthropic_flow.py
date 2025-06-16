@@ -217,7 +217,7 @@ class LiteLLMResponseToAnthropicFlow(ConversionService[Any, MessagesResponse]):
         if hasattr(litellm_response, 'model'):
             return litellm_response.model
         
-        return "claude-3-sonnet"  # Final fallback
+        return "claude-3-7-sonnet-20250219"  # Final fallback
     
     def _map_stop_reason(self, finish_reason: str) -> str:
         """Map LiteLLM finish reasons to Anthropic stop reasons."""

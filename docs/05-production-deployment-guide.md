@@ -47,6 +47,17 @@ Create `.env` file:
 OPENROUTER_API_KEY=your-openrouter-api-key
 ENVIRONMENT=production
 
+# Unified Proxy Backend Configuration
+# Options: OPENROUTER, AZURE_DATABRICKS, LITELLM_OPENROUTER
+PROXY_BACKEND=OPENROUTER
+
+# Azure Databricks Configuration (only if PROXY_BACKEND=AZURE_DATABRICKS)
+# DATABRICKS_HOST=your-workspace-instance
+# DATABRICKS_TOKEN=your-databricks-token
+
+# LiteLLM Configuration (only if PROXY_BACKEND=LITELLM_OPENROUTER) 
+# LITELLM_MASTER_KEY=your-secure-master-key
+
 # Server Configuration
 HOST=0.0.0.0
 PORT=4000
@@ -113,11 +124,23 @@ CMD ["uv", "run", "uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "400
 # Build image
 docker build -t openrouter-anthropic-server:v2.0 .
 
-# Run container
+# Run container with OpenRouter backend (recommended)
 docker run -d \
   --name openrouter-server \
   -p 4000:4000 \
   -e OPENROUTER_API_KEY=your-api-key \
+  -e PROXY_BACKEND=OPENROUTER \
+  -e ENVIRONMENT=production \
+  openrouter-anthropic-server:v2.0
+
+# Or with Azure Databricks backend
+docker run -d \
+  --name openrouter-server \
+  -p 4000:4000 \
+  -e OPENROUTER_API_KEY=your-api-key \
+  -e PROXY_BACKEND=AZURE_DATABRICKS \
+  -e DATABRICKS_HOST=your-workspace-instance \
+  -e DATABRICKS_TOKEN=your-databricks-token \
   -e ENVIRONMENT=production \
   openrouter-anthropic-server:v2.0
 ```
@@ -135,6 +158,10 @@ services:
       - "4000:4000"
     environment:
       - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
+      - PROXY_BACKEND=${PROXY_BACKEND:-OPENROUTER}
+      - DATABRICKS_HOST=${DATABRICKS_HOST}
+      - DATABRICKS_TOKEN=${DATABRICKS_TOKEN}
+      - LITELLM_MASTER_KEY=${LITELLM_MASTER_KEY}
       - ENVIRONMENT=production
       - LOG_LEVEL=INFO
       - DEBUG_ENABLED=false
@@ -161,19 +188,57 @@ services:
 
 ## 🔧 Configuration
 
+### Backend Mode Selection
+
+The server supports three backend modes for different production scenarios:
+
+#### **OPENROUTER** (Recommended for most deployments)
+- **Performance**: Fastest response times with direct API calls
+- **Complexity**: Minimal configuration required
+- **Use Case**: Standard production deployments
+```env
+PROXY_BACKEND=OPENROUTER
+OPENROUTER_API_KEY=your-api-key
+```
+
+#### **AZURE_DATABRICKS** (Enterprise Azure environments)
+- **Performance**: Direct integration with Azure Databricks Claude endpoints
+- **Complexity**: Requires Azure Databricks Premium workspace setup
+- **Use Case**: Azure-native deployments with Databricks infrastructure
+```env
+PROXY_BACKEND=AZURE_DATABRICKS
+DATABRICKS_HOST=your-workspace-instance
+DATABRICKS_TOKEN=your-databricks-token
+OPENROUTER_API_KEY=your-api-key  # For fallback tools
+```
+
+#### **LITELLM_OPENROUTER** (Advanced features needed)
+- **Performance**: Additional overhead but advanced features available
+- **Complexity**: Requires LiteLLM configuration and master key
+- **Use Case**: When caching, load balancing, or advanced routing is needed
+```env
+PROXY_BACKEND=LITELLM_OPENROUTER
+OPENROUTER_API_KEY=your-api-key
+LITELLM_MASTER_KEY=your-secure-master-key
+```
+
 ### Environment Variables
 
-| Variable                     | Required | Default                       | Description         |
-| ---------------------------- | -------- | ----------------------------- | ------------------- |
-| `OPENROUTER_API_KEY`         | ✅        | -                             | OpenRouter API key  |
-| `ENVIRONMENT`                | ❌        | `development`                 | Environment mode    |
-| `HOST`                       | ❌        | `127.0.0.1`                   | Server host         |
-| `PORT`                       | ❌        | `4000`                        | Server port         |
-| `LOG_LEVEL`                  | ❌        | `INFO`                        | Logging level       |
-| `DEBUG_ENABLED`              | ❌        | `false`                       | Debug logging       |
-| `INSTRUCTOR_ENABLED`         | ❌        | `true`                        | Structured outputs  |
-| `ANTHROPIC_MODEL`            | ❌        | `anthropic/claude-sonnet-4`   | Large model mapping |
-| `ANTHROPIC_SMALL_FAST_MODEL` | ❌        | `anthropic/claude-3.7-sonnet` | Small model mapping |
+| Variable                     | Required | Default                       | Description                                                     |
+| ---------------------------- | -------- | ----------------------------- | --------------------------------------------------------------- |
+| `OPENROUTER_API_KEY`         | ✅        | -                             | OpenRouter API key                                              |
+| `PROXY_BACKEND`              | ❌        | `OPENROUTER`                  | Backend mode (OPENROUTER, AZURE_DATABRICKS, LITELLM_OPENROUTER) |
+| `DATABRICKS_HOST`            | ❌        | -                             | Azure Databricks workspace instance (if using AZURE_DATABRICKS) |
+| `DATABRICKS_TOKEN`           | ❌        | -                             | Azure Databricks PAT token (if using AZURE_DATABRICKS)          |
+| `LITELLM_MASTER_KEY`         | ❌        | -                             | LiteLLM master key (if using LITELLM_OPENROUTER)                |
+| `ENVIRONMENT`                | ❌        | `development`                 | Environment mode                                                |
+| `HOST`                       | ❌        | `127.0.0.1`                   | Server host                                                     |
+| `PORT`                       | ❌        | `4000`                        | Server port                                                     |
+| `LOG_LEVEL`                  | ❌        | `INFO`                        | Logging level                                                   |
+| `DEBUG_ENABLED`              | ❌        | `false`                       | Debug logging                                                   |
+| `INSTRUCTOR_ENABLED`         | ❌        | `true`                        | Structured outputs                                              |
+| `ANTHROPIC_MODEL`            | ❌        | `anthropic/claude-sonnet-4`   | Large model mapping                                             |
+| `ANTHROPIC_SMALL_FAST_MODEL` | ❌        | `anthropic/claude-3.7-sonnet` | Small model mapping                                             |
 
 ### Performance Tuning
 

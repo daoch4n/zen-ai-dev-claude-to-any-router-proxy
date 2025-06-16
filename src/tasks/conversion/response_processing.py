@@ -8,6 +8,7 @@ import uuid
 from typing import Any, Dict, Optional
 
 from prefect import task
+from prefect.cache_policies import NO_CACHE
 
 from ...models.base import Usage
 from ...models.instructor import ConversionResult
@@ -168,7 +169,7 @@ async def determine_response_model_task(
             )
         
         # Final fallback
-        default_model = "claude-3-sonnet"
+        default_model = "claude-3-7-sonnet-20250219"
         
         logger.warning("Could not determine model, using default",
                       default_model=default_model)
@@ -187,7 +188,7 @@ async def determine_response_model_task(
         logger.error("Model determination failed", error=error_msg, exc_info=True)
         
         # Return default model on error
-        default_model = "claude-3-sonnet"
+        default_model = "claude-3-7-sonnet-20250219"
         
         return ConversionResult(
             success=False,
@@ -248,7 +249,7 @@ async def map_stop_reason_task(
         )
 
 
-@task(name="reconstruct_streaming_response")
+@task(name="reconstruct_streaming_response", cache_policy=NO_CACHE)
 async def reconstruct_streaming_response_task(
     stream_wrapper: Any,
     original_request: Optional[Dict[str, Any]] = None,
@@ -294,7 +295,7 @@ async def reconstruct_streaming_response_task(
             original_request=original_request,
             litellm_response=stream_wrapper
         )
-        response_model = model_result.converted_data if model_result.success else "claude-3-sonnet"
+        response_model = model_result.converted_data if model_result.success else "claude-3-7-sonnet-20250219"
         
         # Create a simple response indicating streaming is not supported in this context
         response = {
@@ -351,7 +352,7 @@ async def _reconstruct_from_chunks(
             original_request=original_request,
             litellm_response=None
         )
-        response_model = model_result.converted_data if model_result.success else "claude-3-sonnet"
+        response_model = model_result.converted_data if model_result.success else "claude-3-7-sonnet-20250219"
         
         # Create response structure
         response = {

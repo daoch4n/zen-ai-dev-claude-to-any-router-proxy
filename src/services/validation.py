@@ -12,6 +12,7 @@ from ..models.instructor import (
     StructuredToolCall
 )
 from ..utils.errors import ToolValidationError, ConversationFlowError
+from ..utils.enhanced_error_handler import enhanced_exception_handler, enhanced_error_context, log_error_with_hash
 from ..core.logging_config import get_logger
 from ..services.context_manager import ContextManager
 from ..coordinators.validation_coordinator import get_validation_coordinator
@@ -45,22 +46,17 @@ class MessageValidationService(ValidationService[Message], InstructorService):
             # No event loop exists, create new one
             return asyncio.run(coro)
     
+    @enhanced_exception_handler(context={"service": "MessageValidation", "method": "validate"})
     def validate(self, data: Any, **kwargs) -> ValidationResult:
         """Validate message data using coordinator."""
-        try:
+        with enhanced_error_context("message_validation") as block_hash:
             # Use coordinator for validation
             return self._run_async(self._coordinator.validate_message(data, **kwargs))
-        except Exception as e:
-            self.logger.error("Message validation failed", error=str(e), exc_info=True)
-            return self.create_validation_result(
-                False,
-                errors=[f"Validation failed: {str(e)}"],
-                suggestions=["Check message format and try again"]
-            )
     
+    @enhanced_exception_handler(context={"service": "MessageValidation", "method": "validate_messages_request"})
     def validate_messages_request(self, request: MessagesRequest) -> MessagesRequest:
         """Validate a MessagesRequest using coordinator."""
-        try:
+        with enhanced_error_context("messages_request_validation", {"request_type": type(request).__name__}) as block_hash:
             # Use coordinator for validation
             result = self._run_async(self._coordinator.validate_messages_request(request))
             
@@ -73,10 +69,6 @@ class MessageValidationService(ValidationService[Message], InstructorService):
             from ..tasks.validation.message_validation_tasks import validate_messages_request_data
             validated_request = validate_messages_request_data(request)
             return validated_request
-            
-        except Exception as e:
-            self.logger.error("Messages request validation failed", error=str(e), exc_info=True)
-            raise ValueError(f"Request validation failed: {str(e)}")
 
 
 class ToolValidationService(ValidationService[Tool], InstructorService):

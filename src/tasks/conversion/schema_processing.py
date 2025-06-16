@@ -299,7 +299,7 @@ async def _convert_anthropic_tool_to_litellm(tool_data: Dict[str, Any]) -> Conve
     clean_schema_result = await clean_openrouter_schema_task(tool.input_schema)
     cleaned_schema = clean_schema_result.converted_data if clean_schema_result.success else tool.input_schema
     
-    # Convert to LiteLLM format
+    # Convert to LiteLLM format (OpenRouter uses standard OpenAI nested format)
     converted_tool = {
         "type": "function",
         "function": {

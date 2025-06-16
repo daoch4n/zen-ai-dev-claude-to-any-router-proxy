@@ -92,13 +92,14 @@ The server uses a modular, task-based architecture with:
 
 Visit [`docs/`](docs/) for comprehensive documentation:
 
-- **[📖 Documentation Overview](docs/01-README.md)** - Complete documentation guide
+- **[📖 Documentation Overview](docs/README.md)** - Complete documentation guide
 - **[🔌 API Reference](docs/02-api-reference.md)** - Complete API documentation with examples
 - **[🏗️ Architecture](docs/03-architecture.md)** - System architecture and design
+- **[🔄 Unified Proxy Backend Guide](docs/17-unified-proxy-backend-guide.md)** - Backend configuration and routing
+- **[☁️ Azure Databricks Integration](docs/16-azure-databricks-guide.md)** - Comprehensive Azure Databricks Claude guide
 - **[🚀 Deployment Guide](docs/05-production-deployment-guide.md)** - Production deployment instructions
 - **[📊 Implementation Status](docs/08-implementation-status.md)** - Current implementation status
 - **[🧪 Testing Plan](docs/06-claude-code-cli-testing-plan.md)** - Comprehensive testing strategy
-- **[🔍 Debug Logging](docs/07-debug-logging.md)** - Debug and error tracking system
 
 ## 🚀 Deployment Options
 
@@ -141,12 +142,51 @@ docker-compose up -d
 ### Required Environment Variables
 - `OPENROUTER_API_KEY` - Your OpenRouter API key
 
+### Unified Proxy Backend Configuration
+The server supports four backend modes via the `PROXY_BACKEND` environment variable:
+
+#### **OPENROUTER** (Recommended)
+Direct OpenRouter integration for best performance:
+```bash
+PROXY_BACKEND=OPENROUTER
+OPENROUTER_API_KEY=your-api-key
+```
+
+#### **LITELLM_MESSAGES** (Native Anthropic Format)
+Use LiteLLM's `/v1/messages` endpoint with no format conversion:
+```bash
+PROXY_BACKEND=LITELLM_MESSAGES
+LITELLM_BASE_URL=http://localhost:4001
+OPENROUTER_API_KEY=your-api-key
+```
+**Benefits**: No format conversion overhead, simplified architecture, native Anthropic format support
+
+#### **AZURE_DATABRICKS**
+Route requests to Azure Databricks Claude endpoints:
+```bash
+PROXY_BACKEND=AZURE_DATABRICKS
+DATABRICKS_HOST=your-workspace-instance  # without .azuredatabricks.net
+DATABRICKS_TOKEN=your-databricks-token
+OPENROUTER_API_KEY=your-api-key  # still needed for fallback tools
+```
+
+#### **LITELLM_OPENROUTER** (Legacy)
+Use LiteLLM with format conversion for advanced features:
+```bash
+PROXY_BACKEND=LITELLM_OPENROUTER
+OPENROUTER_API_KEY=your-api-key
+LITELLM_MASTER_KEY=your-secure-master-key
+```
+
 ### Optional Environment Variables
 - `ENVIRONMENT` - Environment mode (`development`/`production`)
 - `HOST` - Server host (default: `127.0.0.1`)
 - `PORT` - Server port (default: `4000`)
 - `LOG_LEVEL` - Logging level (default: `INFO`)
 - `DEBUG_ENABLED` - Enable debug features (default: `false`)
+- `LITELLM_BASE_URL` - LiteLLM proxy server URL (for LITELLM_MESSAGES backend)
+
+> **Note:** Use `env.example` as a template for your `.env` file. The `.env` file is gitignored for security.
 
 ## 🧪 Testing
 

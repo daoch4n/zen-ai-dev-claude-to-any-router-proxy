@@ -8,6 +8,7 @@ the monolithic router functions with clean, testable workflows.
 import uuid
 from typing import Dict, Any, Optional, List
 from prefect import flow, task
+from prefect.cache_policies import NO_CACHE
 from fastapi import HTTPException
 
 from src.models.anthropic import MessagesRequest, MessagesResponse
@@ -265,7 +266,7 @@ async def convert_to_litellm_task(
     return litellm_request
 
 
-@task(name="execute_api_call")
+@task(name="execute_api_call", cache_policy=NO_CACHE)
 async def execute_api_call_task(
     litellm_request: Any,  # This is actually a ConversionResult object
     conversation_context: Any
@@ -292,7 +293,7 @@ async def execute_api_call_task(
     return response
 
 
-@task(name="execute_streaming_api_call")
+@task(name="execute_streaming_api_call", cache_policy=NO_CACHE)
 async def execute_streaming_api_call_task(
     litellm_request: Any,  # This is actually a ConversionResult object
     conversation_context: Any
@@ -412,7 +413,7 @@ async def execute_tool_workflow_task(
         return response
 
 
-@task(name="convert_to_anthropic")
+@task(name="convert_to_anthropic", cache_policy=NO_CACHE)
 async def convert_to_anthropic_task(
     response: Any,
     original_request: MessagesRequest

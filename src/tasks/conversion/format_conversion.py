@@ -9,29 +9,20 @@ import uuid
 from typing import Any, Dict, List, Optional, Union
 
 from prefect import task
+from prefect.cache_policies import NO_CACHE
 
 from ...models.anthropic import Message, MessagesRequest, MessagesResponse, Tool
 from ...models.base import Usage
 from ...models.litellm import LiteLLMMessage, LiteLLMRequest
 from ...models.instructor import ConversionResult
-from ...utils.config import config
+from ...utils.config import config, OPENROUTER_API_BASE
 from ...core.logging_config import get_logger
 from ...services.context_manager import ContextManager
+from .model_mapping_tasks import ensure_openrouter_prefix
 
 # Initialize logging and context management
 logger = get_logger("format_conversion")
 context_manager = ContextManager()
-
-
-def ensure_openrouter_prefix(model: str) -> str:
-    """
-    Ensure model has openrouter/ prefix for LiteLLM routing.
-    
-    This is critical for LiteLLM to correctly route requests to OpenRouter.
-    """
-    if not model.startswith('openrouter/'):
-        return f"openrouter/{model}"
-    return model
 
 
 @task(name="anthropic_to_litellm_conversion")
@@ -183,7 +174,7 @@ async def anthropic_to_litellm_task(
             "temperature": source.temperature or 1.0,
             "stream": source.stream or False,
             "api_key": config.openrouter_api_key,
-            "api_base": "https://openrouter.ai/api/v1",
+            "api_base": OPENROUTER_API_BASE,
             "extra_headers": {
                 "HTTP-Referer": "https://github.com/openrouter-anthropic-server",
                 "X-Title": "OpenRouter Anthropic Server"
@@ -199,19 +190,20 @@ async def anthropic_to_litellm_task(
             litellm_request_data["stop"] = source.stop_sequences
         if litellm_tools:
             litellm_request_data["tools"] = litellm_tools
-        if source.tool_choice:
-            from .message_transformation import transform_tool_calls_task
-            tool_choice_result = await transform_tool_calls_task(
-                tool_choice=source.tool_choice,
-                target_format="litellm"
-            )
-            if tool_choice_result.success:
-                litellm_request_data["tool_choice"] = tool_choice_result.converted_data
+            # Only add tool_choice if we have tools to send
+            if source.tool_choice:
+                from .message_transformation import transform_tool_calls_task
+                tool_choice_result = await transform_tool_calls_task(
+                    tool_choice=source.tool_choice,
+                    target_format="litellm"
+                )
+                if tool_choice_result.success:
+                    litellm_request_data["tool_choice"] = tool_choice_result.converted_data
         
         logger.debug("Building LiteLLM request",
                     original_model=source.model,
                     openrouter_model=openrouter_model,
-                    api_base="https://openrouter.ai/api/v1")
+                    api_base=OPENROUTER_API_BASE)
         
         logger.info("Anthropic to LiteLLM conversion completed",
                    **metadata)
@@ -233,7 +225,7 @@ async def anthropic_to_litellm_task(
         )
 
 
-@task(name="litellm_response_to_anthropic_conversion")
+@task(name="litellm_response_to_anthropic_conversion", cache_policy=NO_CACHE)
 async def litellm_response_to_anthropic_task(
     litellm_response: Any,
     original_request: Optional[Dict[str, Any]] = None,
@@ -336,7 +328,7 @@ async def litellm_response_to_anthropic_task(
             litellm_response=litellm_response
         )
         
-        response_model = model_result.converted_data if model_result.success else "claude-3-sonnet"
+        response_model = model_result.converted_data if model_result.success else "claude-3-7-sonnet-20250219"
         
         # Map stop reason
         from .response_processing import map_stop_reason_task
@@ -470,14 +462,15 @@ async def litellm_to_anthropic_task(
             anthropic_request_data["stop_sequences"] = source.stop
         if anthropic_tools:
             anthropic_request_data["tools"] = [tool.model_dump() for tool in anthropic_tools]
-        if source.tool_choice:
-            from .message_transformation import transform_tool_calls_task
-            tool_choice_result = await transform_tool_calls_task(
-                tool_choice=source.tool_choice,
-                target_format="anthropic"
-            )
-            if tool_choice_result.success:
-                anthropic_request_data["tool_choice"] = tool_choice_result.converted_data
+            # Only add tool_choice if we have tools to send
+            if source.tool_choice:
+                from .message_transformation import transform_tool_calls_task
+                tool_choice_result = await transform_tool_calls_task(
+                    tool_choice=source.tool_choice,
+                    target_format="anthropic"
+                )
+                if tool_choice_result.success:
+                    anthropic_request_data["tool_choice"] = tool_choice_result.converted_data
         
         logger.info("LiteLLM to Anthropic conversion completed", **metadata)
         

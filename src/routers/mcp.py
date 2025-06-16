@@ -5,14 +5,23 @@ This router provides REST API endpoints for managing MCP servers,
 using the modular task-flow-coordinator architecture.
 """
 
-from typing import Dict, List, Any
-from fastapi import APIRouter, Query
+from typing import Dict, List, Any, Optional
+from fastapi import APIRouter, Query, Body
 from pydantic import BaseModel, Field
 
-from src.coordinators.mcp_coordinator import mcp_coordinator
+try:
+    from src.coordinators.mcp_coordinator import mcp_coordinator
+except ImportError:
+    mcp_coordinator = None
+    
+from ..services.mcp_service import MCPService
+from ..core.logging_config import get_logger
 
+logger = get_logger("mcp_router")
 router = APIRouter(prefix="/v1/mcp", tags=["MCP Management"])
 
+# MCP service instance
+mcp_service = MCPService()
 
 class ServerStartRequest(BaseModel):
     """Request model for starting MCP servers."""
@@ -58,6 +67,29 @@ class HealthCheckResponse(BaseModel):
     overall_health: str
     results: List[Dict[str, Any]]
     timestamp: str
+
+
+class MCPServerCreate(BaseModel):
+    """MCP server creation request."""
+    name: str
+    url: str
+    type: str = "sse"  # sse, stdio, streamable_http
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class MCPServerUpdate(BaseModel):
+    """MCP server update request."""
+    name: Optional[str] = None
+    url: Optional[str] = None
+    type: Optional[str] = None
+    metadata: Optional[Dict[str, Any]] = None
+
+
+class MCPToolCall(BaseModel):
+    """MCP tool call request."""
+    tool_name: str
+    arguments: Dict[str, Any]
+    server_id: Optional[str] = None
 
 
 @router.get("/servers", response_model=List[str])
@@ -131,422 +163,248 @@ async def get_server_config(server_name: str):
 async def get_all_server_configs():
     """Get configurations for all MCP servers."""
     return mcp_coordinator.get_all_server_configs()
-    
+
+
+@router.get("/mcp/enabled")
+async def get_mcp_enabled():
+    """Check if MCP is enabled (python>=3.10 requirements are met)."""
     try:
-        # Check if server is configured
-        if not config_manager.get_server_config(server_name):
-            request_logger.warning("Server not found in configuration")
-            raise HTTPException(
-                status_code=404,
-                detail=f"MCP server '{server_name}' not found in configuration"
-            )
-        
-        status = await lifecycle_service.get_server_status(server_name)
-        
-        request_logger.info("Successfully retrieved server status",
-                           status=status.get("status", "unknown"))
-        
-        return MCPServerStatusResponse(**status)
-        
-    except HTTPException:
-        raise
+        status = await mcp_service.is_mcp_enabled()
+        return status
     except Exception as e:
-        request_logger.error("Failed to get server status",
-                           error=str(e),
-                           error_type=type(e).__name__)
+        logger.error("Failed to check MCP status", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to get server status: {str(e)}"
+            detail={"error": "Failed to check MCP status", "message": str(e)}
         )
 
 
-@router.get("/servers/status", response_model=Dict[str, MCPServerStatusResponse])
-async def get_all_servers_status():
-    """Get status of all configured MCP servers."""
-    
-    request_logger = logger.bind(endpoint="get_all_servers_status")
-    request_logger.info("Getting all MCP servers status")
-    
+@router.get("/mcp/tools/list")
+async def list_mcp_tools(
+    server_id: Optional[str] = Query(None, description="Optional server ID filter")
+):
+    """List all available tools."""
     try:
-        all_status = await lifecycle_service.get_all_servers_status()
+        result = await mcp_service.list_mcp_tools(server_id=server_id)
         
-        # Convert to response models
-        response = {}
-        for server_name, status in all_status.items():
-            response[server_name] = MCPServerStatusResponse(**status)
-        
-        request_logger.info("Successfully retrieved all servers status",
-                           total_servers=len(response))
-        
-        return response
-        
-    except Exception as e:
-        request_logger.error("Failed to get all servers status",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Failed to get all servers status: {str(e)}"
-        )
-
-
-@router.post("/servers/{server_name}/start")
-async def start_server(server_name: str):
-    """Start a specific MCP server."""
-    
-    request_logger = logger.bind(
-        endpoint="start_server",
-        server_name=server_name
-    )
-    request_logger.info("Starting MCP server")
-    
-    try:
-        # Check if server is configured
-        if not config_manager.get_server_config(server_name):
-            request_logger.warning("Server not found in configuration")
-            raise HTTPException(
-                status_code=404,
-                detail=f"MCP server '{server_name}' not found in configuration"
-            )
-        
-        result = await lifecycle_service.start_server(server_name)
-        
-        if result["success"]:
-            request_logger.info("Successfully started MCP server")
-            return {
-                "message": f"MCP server '{server_name}' started successfully",
-                "server_name": server_name,
-                "status": result
-            }
-        else:
-            request_logger.error("Failed to start MCP server")
+        if not result["success"]:
             raise HTTPException(
                 status_code=500,
-                detail=f"Failed to start MCP server '{server_name}'"
+                detail={"error": "Failed to list MCP tools", "message": result.get("error")}
             )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        request_logger.error("Error starting MCP server",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error starting MCP server: {str(e)}"
-        )
-
-
-@router.post("/servers/{server_name}/stop")
-async def stop_server(server_name: str, force: bool = Query(default=False)):
-    """Stop a specific MCP server."""
-    
-    request_logger = logger.bind(
-        endpoint="stop_server",
-        server_name=server_name,
-        force=force
-    )
-    request_logger.info("Stopping MCP server")
-    
-    try:
-        # Check if server is configured
-        if not config_manager.get_server_config(server_name):
-            request_logger.warning("Server not found in configuration")
-            raise HTTPException(
-                status_code=404,
-                detail=f"MCP server '{server_name}' not found in configuration"
-            )
-        
-        result = await lifecycle_service.stop_server(server_name, force=force)
-        
-        if result["success"]:
-            request_logger.info("Successfully stopped MCP server")
-            return {
-                "message": f"MCP server '{server_name}' stopped successfully",
-                "server_name": server_name,
-                "force": force,
-                "status": result
-            }
-        else:
-            request_logger.error("Failed to stop MCP server")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to stop MCP server '{server_name}'"
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        request_logger.error("Error stopping MCP server",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error stopping MCP server: {str(e)}"
-        )
-
-
-@router.post("/servers/{server_name}/restart")
-async def restart_server(server_name: str):
-    """Restart a specific MCP server."""
-    
-    request_logger = logger.bind(
-        endpoint="restart_server",
-        server_name=server_name
-    )
-    request_logger.info("Restarting MCP server")
-    
-    try:
-        # Check if server is configured
-        if not config_manager.get_server_config(server_name):
-            request_logger.warning("Server not found in configuration")
-            raise HTTPException(
-                status_code=404,
-                detail=f"MCP server '{server_name}' not found in configuration"
-            )
-        
-        result = await lifecycle_service.restart_server(server_name)
-        
-        if result["success"]:
-            request_logger.info("Successfully restarted MCP server")
-            return {
-                "message": f"MCP server '{server_name}' restarted successfully",
-                "server_name": server_name,
-                "status": result
-            }
-        else:
-            request_logger.error("Failed to restart MCP server")
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to restart MCP server '{server_name}'"
-            )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        request_logger.error("Error restarting MCP server",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error restarting MCP server: {str(e)}"
-        )
-
-
-@router.post("/servers/start", response_model=MultiServerOperationResponse)
-async def start_multiple_servers(request: ServerStartRequest):
-    """Start multiple MCP servers concurrently."""
-    
-    request_logger = logger.bind(
-        endpoint="start_multiple_servers",
-        server_names=request.server_names,
-        count=len(request.server_names)
-    )
-    request_logger.info("Starting multiple MCP servers")
-    
-    try:
-        # Validate all servers exist in configuration
-        for server_name in request.server_names:
-            if not config_manager.get_server_config(server_name):
-                request_logger.warning("Server not found in configuration",
-                                     server_name=server_name)
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"MCP server '{server_name}' not found in configuration"
-                )
-        
-        result = await lifecycle_service.start_multiple_servers(request.server_names)
-        
-        request_logger.info("Multiple server start operation completed",
-                           success_rate=result["success_rate"])
-        
-        return MultiServerOperationResponse(**result)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        request_logger.error("Error starting multiple MCP servers",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error starting multiple MCP servers: {str(e)}"
-        )
-
-
-@router.post("/servers/stop", response_model=MultiServerOperationResponse)
-async def stop_multiple_servers(request: ServerStopRequest):
-    """Stop multiple MCP servers concurrently."""
-    
-    request_logger = logger.bind(
-        endpoint="stop_multiple_servers",
-        server_names=request.server_names,
-        count=len(request.server_names),
-        force=request.force
-    )
-    request_logger.info("Stopping multiple MCP servers")
-    
-    try:
-        # Validate all servers exist in configuration
-        for server_name in request.server_names:
-            if not config_manager.get_server_config(server_name):
-                request_logger.warning("Server not found in configuration",
-                                     server_name=server_name)
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"MCP server '{server_name}' not found in configuration"
-                )
-        
-        result = await lifecycle_service.stop_multiple_servers(
-            request.server_names, 
-            force=request.force
-        )
-        
-        request_logger.info("Multiple server stop operation completed",
-                           success_rate=result["success_rate"])
-        
-        return MultiServerOperationResponse(**result)
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        request_logger.error("Error stopping multiple MCP servers",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error stopping multiple MCP servers: {str(e)}"
-        )
-
-
-@router.get("/health", response_model=HealthCheckResponse)
-async def health_check_all_servers():
-    """Perform health checks on all configured MCP servers."""
-    
-    request_logger = logger.bind(endpoint="health_check_all_servers")
-    request_logger.info("Performing health checks on all MCP servers")
-    
-    try:
-        result = await lifecycle_service.health_check_all_servers()
-        
-        request_logger.info("Health check operation completed",
-                           overall_health=result["overall_health"])
-        
-        return HealthCheckResponse(**result)
-        
-    except Exception as e:
-        request_logger.error("Error performing health checks",
-                           error=str(e),
-                           error_type=type(e).__name__)
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error performing health checks: {str(e)}"
-        )
-
-
-@router.get("/config/{server_name}")
-async def get_server_config(server_name: str):
-    """Get configuration for a specific MCP server."""
-    
-    request_logger = logger.bind(
-        endpoint="get_server_config",
-        server_name=server_name
-    )
-    request_logger.info("Getting MCP server configuration")
-    
-    try:
-        config = config_manager.get_server_config(server_name)
-        
-        if not config:
-            request_logger.warning("Server not found in configuration")
-            raise HTTPException(
-                status_code=404,
-                detail=f"MCP server '{server_name}' not found in configuration"
-            )
-        
-        # Convert to dict for JSON response
-        config_dict = {
-            "name": config.name,
-            "type": config.type,
-            "command": config.command,
-            "environment": config.environment,
-            "log_level": config.log_level,
-            "restart_policy": config.restart_policy,
-            "max_restarts": config.max_restarts,
-            "python_version": config.python_version,
-            "node_version": config.node_version,
-            "health_check": {
-                "enabled": config.health_check.enabled,
-                "endpoint": config.health_check.endpoint,
-                "interval": config.health_check.interval,
-                "timeout": config.health_check.timeout
-            }
-        }
-        
-        request_logger.info("Successfully retrieved server configuration")
         
         return {
-            "server_name": server_name,
-            "config": config_dict
+            "tools": result["tools"],
+            "total_count": result["total_count"],
+            "server_count": result["server_count"]
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        request_logger.error("Error getting server configuration",
-                           error=str(e),
-                           error_type=type(e).__name__)
+        logger.error("Failed to list MCP tools", error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Error getting server configuration: {str(e)}"
+            detail={"error": "Failed to list MCP tools", "message": str(e)}
         )
 
 
-@router.get("/config")
-async def get_all_server_configs():
-    """Get configurations for all MCP servers."""
-    
-    request_logger = logger.bind(endpoint="get_all_server_configs")
-    request_logger.info("Getting all MCP server configurations")
-    
+@router.post("/mcp/tools/call")
+async def call_mcp_tool(tool_call: MCPToolCall):
+    """Call a specific tool with the provided arguments."""
     try:
-        all_configs = {}
-        server_names = config_manager.list_server_names()
+        result = await mcp_service.call_mcp_tool(
+            tool_name=tool_call.tool_name,
+            arguments=tool_call.arguments,
+            server_id=tool_call.server_id
+        )
         
-        for server_name in server_names:
-            config = config_manager.get_server_config(server_name)
-            if config:
-                all_configs[server_name] = {
-                    "name": config.name,
-                    "type": config.type,
-                    "command": config.command,
-                    "environment": config.environment,
-                    "log_level": config.log_level,
-                    "restart_policy": config.restart_policy,
-                    "max_restarts": config.max_restarts,
-                    "python_version": config.python_version,
-                    "node_version": config.node_version,
-                    "health_check": {
-                        "enabled": config.health_check.enabled,
-                        "endpoint": config.health_check.endpoint,
-                        "interval": config.health_check.interval,
-                        "timeout": config.health_check.timeout
-                    }
-                }
-        
-        request_logger.info("Successfully retrieved all server configurations",
-                           total_servers=len(all_configs))
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "Tool call failed", "message": result.get("error")}
+            )
         
         return {
-            "total_servers": len(all_configs),
-            "configurations": all_configs
+            "tool_name": result["tool_name"],
+            "server_id": result["server_id"],
+            "result": result["result"]
         }
         
+    except HTTPException:
+        raise
     except Exception as e:
-        request_logger.error("Error getting all server configurations",
-                           error=str(e),
-                           error_type=type(e).__name__)
+        logger.error("Failed to call MCP tool", tool_name=tool_call.tool_name, error=str(e))
         raise HTTPException(
             status_code=500,
-            detail=f"Error getting all server configurations: {str(e)}"
+            detail={"error": "Failed to call MCP tool", "message": str(e)}
+        )
+
+
+@router.get("/v1/mcp/server")
+async def list_mcp_servers():
+    """Returns all of the configured mcp servers in the db filtered by requestor's access."""
+    try:
+        result = await mcp_service.list_mcp_servers()
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "Failed to list MCP servers", "message": result.get("error")}
+            )
+        
+        return {
+            "servers": result["servers"],
+            "total_count": result["total_count"],
+            "enabled": result["enabled"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to list MCP servers", error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to list MCP servers", "message": str(e)}
+        )
+
+
+@router.get("/v1/mcp/server/{server_id}")
+async def get_mcp_server(server_id: str):
+    """Returns the specific mcp server in the db given server_id filtered by requestor's access."""
+    try:
+        result = await mcp_service.get_mcp_server(server_id)
+        
+        if not result["success"]:
+            if "not found" in result.get("error", "").lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail={"error": "MCP server not found", "server_id": server_id}
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"error": "Failed to get MCP server", "message": result.get("error")}
+                )
+        
+        return result["server"]
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to get MCP server", server_id=server_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to get MCP server", "message": str(e)}
+        )
+
+
+@router.post("/v1/mcp/server")
+async def add_mcp_server(server_config: MCPServerCreate):
+    """Add a new external mcp server."""
+    try:
+        result = await mcp_service.add_mcp_server(server_config.dict())
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=400,
+                detail={"error": "Failed to add MCP server", "message": result.get("error")}
+            )
+        
+        return {
+            "server_id": result["server_id"],
+            "server": result["server"],
+            "message": "MCP server added successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to add MCP server", server_config=server_config.dict(), error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to add MCP server", "message": str(e)}
+        )
+
+
+@router.put("/v1/mcp/server")
+async def update_mcp_server(
+    server_id: str = Query(..., description="MCP server ID to update"),
+    update_data: MCPServerUpdate = Body(...)
+):
+    """Updates an existing external mcp server."""
+    try:
+        # Get existing server
+        existing_result = await mcp_service.get_mcp_server(server_id)
+        if not existing_result["success"]:
+            raise HTTPException(
+                status_code=404,
+                detail={"error": "MCP server not found", "server_id": server_id}
+            )
+        
+        # Update server configuration
+        existing_server = existing_result["server"]
+        update_dict = update_data.dict(exclude_unset=True)
+        
+        for key, value in update_dict.items():
+            if value is not None:
+                existing_server[key] = value
+        
+        # For this implementation, we'll delete and recreate
+        # In a real implementation, you'd update the existing server
+        await mcp_service.delete_mcp_server(server_id)
+        result = await mcp_service.add_mcp_server(existing_server)
+        
+        if not result["success"]:
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "Failed to update MCP server", "message": result.get("error")}
+            )
+        
+        return {
+            "server_id": result["server_id"],
+            "server": result["server"],
+            "message": "MCP server updated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to update MCP server", server_id=server_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to update MCP server", "message": str(e)}
+        )
+
+
+@router.delete("/v1/mcp/server/{server_id}")
+async def delete_mcp_server(server_id: str):
+    """Deletes the mcp server given server_id."""
+    try:
+        result = await mcp_service.delete_mcp_server(server_id)
+        
+        if not result["success"]:
+            if "not found" in result.get("error", "").lower():
+                raise HTTPException(
+                    status_code=404,
+                    detail={"error": "MCP server not found", "server_id": server_id}
+                )
+            else:
+                raise HTTPException(
+                    status_code=500,
+                    detail={"error": "Failed to delete MCP server", "message": result.get("error")}
+                )
+        
+        return {
+            "message": result["message"],
+            "deleted_server": result["deleted_server"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error("Failed to delete MCP server", server_id=server_id, error=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail={"error": "Failed to delete MCP server", "message": str(e)}
         )

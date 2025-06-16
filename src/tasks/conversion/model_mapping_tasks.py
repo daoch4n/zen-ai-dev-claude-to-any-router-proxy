@@ -13,12 +13,16 @@ def ensure_openrouter_prefix(model: str) -> str:
     """
     Ensure model has openrouter/ prefix for LiteLLM routing.
     
-    This is critical for LiteLLM to correctly route requests to OpenRouter.
-    Based on openrouter_anthropic_server.py implementation.
+    LiteLLM needs 'openrouter/' prefix to detect OpenRouter provider
+    and use OpenAI-style endpoints (/chat/completions) instead of
+    Anthropic endpoints (/messages).
     """
-    if not model.startswith('openrouter/'):
-        return f"openrouter/{model}"
-    return model
+    # If model already has openrouter/ prefix, use as-is
+    if model.startswith('openrouter/'):
+        return model
+    
+    # Add openrouter/ prefix for all models to ensure correct LiteLLM routing
+    return f"openrouter/{model}"
 
 
 def map_model_name(original_model: str) -> ModelMappingResult:

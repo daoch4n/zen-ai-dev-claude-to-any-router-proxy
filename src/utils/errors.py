@@ -55,3 +55,23 @@ class StreamingError(OpenRouterProxyError):
 class ConfigurationError(OpenRouterProxyError):
     """Raised when configuration is invalid."""
     pass
+
+class AzureDatabricksError(OpenRouterProxyError):
+    """Base class for Azure Databricks errors."""
+    pass
+
+class AzureDatabricksAuthError(AzureDatabricksError):
+    """Authentication error with Azure Databricks."""
+    pass
+
+class AzureDatabricksEndpointError(AzureDatabricksError):
+    """Endpoint not found or unavailable."""
+    pass
+
+class AzureDatabricksTimeoutError(AzureDatabricksError):
+    """Request timeout to Azure Databricks."""
+    pass
+
+class AzureDatabricksFormatError(AzureDatabricksError):
+    """Response format conversion error."""
+    pass

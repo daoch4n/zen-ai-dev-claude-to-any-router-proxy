@@ -1,0 +1,16 @@
+.openapi-generator-ignore
+Apis/ClaudeAPIApi.md
+Apis/OAuthAPIApi.md
+Apis/TelemetryAPIApi.md
+Models/ClientInfo.md
+Models/ContentBlock.md
+Models/ErrorResponse.md
+Models/ErrorResponse_error.md
+Models/Message.md
+Models/MessageRequest.md
+Models/MessageResponse.md
+Models/OAuthErrorResponse.md
+Models/TelemetryEvent.md
+Models/TokenResponse.md
+Models/Usage.md
+README.md

@@ -30,7 +30,9 @@ def get_token_usage_stats() -> Dict[str, Any]:
 def get_model_usage_stats() -> Dict[str, int]:
     """Get model usage statistics (placeholder for future implementation)."""
     return {
-        "claude-3-5-sonnet": 0,
-        "claude-3-haiku": 0,
+        "claude-sonnet-4-20250514": 0,
+        "claude-3-7-sonnet-20250219": 0,
+        "anthropic/claude-sonnet-4": 0,
+        "anthropic/claude-3.7-sonnet": 0,
         "other": 0
     }

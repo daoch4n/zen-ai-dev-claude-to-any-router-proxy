@@ -180,7 +180,7 @@ async def _format_validation_summary(results: List[Dict[str, Any]]) -> str:
 async def extract_structured_data_task(
     text: str,
     extraction_model_name: str,
-    model: str = "anthropic/claude-3-5-sonnet-20241022",
+    model: str = "anthropic/claude-sonnet-4",
     extraction_params: Dict[str, Any] = None
 ) -> ConversionResult:
     """

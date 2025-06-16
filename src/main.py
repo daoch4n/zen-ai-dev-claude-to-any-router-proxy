@@ -33,6 +33,11 @@ from src.core.logging_config import configure_structlog, get_logger
 
 # Import routers
 from src.routers import messages_router, tokens_router, health_router, debug_router, mcp_router
+from src.routers.claude_code_health import router as claude_code_health_router
+from src.routers.claude_code_streaming import router as claude_code_streaming_router
+from src.routers.streaming_cache import router as streaming_cache_router
+from src.routers.universal_streaming import router as universal_streaming_router
+from src.routers.azure_databricks import router as azure_databricks_router
 
 # Import middleware
 from src.middleware import LoggingMiddleware, UnifiedLoggingMiddleware, ErrorHandlingMiddleware, CORSMiddleware
@@ -176,9 +181,45 @@ def create_app() -> FastAPI:
     
     # Include routers
     app.include_router(health_router)
+    app.include_router(claude_code_health_router)  # Claude Code health endpoints
+    app.include_router(claude_code_streaming_router)  # Phase 2: Advanced Streaming endpoints
+    app.include_router(streaming_cache_router)  # Phase 3A: Advanced Streaming Cache endpoints
+    app.include_router(universal_streaming_router)  # Phase 3B: Universal Multi-Model Streaming endpoints
     app.include_router(messages_router)
     app.include_router(tokens_router)
     app.include_router(mcp_router)
+    
+    # Log active proxy backend configuration
+    backend = config.get_active_backend()
+    logger.info("🔄 Active proxy backend configured",
+               backend=backend,
+               endpoint="/v1/messages")
+    
+    # Azure Databricks dedicated endpoints (always available for direct access)
+    if config.requires_databricks_config():
+        app.include_router(azure_databricks_router)
+        logger.info("🟦 Azure Databricks dedicated endpoints enabled", 
+                   endpoint_prefix="/v1/databricks/*",
+                   workspace=config.databricks_host,
+                   note="Direct access to Azure Databricks endpoints")
+    
+    # Log backend-specific information
+    if backend == "AZURE_DATABRICKS":
+        if config.databricks_host and config.databricks_token:
+            logger.info("✅ Azure Databricks main routing active",
+                       main_endpoint="/v1/messages",
+                       workspace=config.databricks_host)
+        else:
+            logger.warning("⚠️ Azure Databricks backend selected but missing configuration",
+                          missing_vars="DATABRICKS_HOST and/or DATABRICKS_TOKEN")
+    elif backend == "OPENROUTER":
+        logger.info("🔀 OpenRouter direct backend active",
+                   main_endpoint="/v1/messages", 
+                   mode="bypass_litellm")
+    elif backend == "LITELLM_OPENROUTER":
+        logger.info("🔗 LiteLLM + OpenRouter backend active",
+                   main_endpoint="/v1/messages",
+                   mode="litellm_proxy")
     
     # Include debug router (only in development)
     if config.environment == "development":
@@ -186,6 +227,10 @@ def create_app() -> FastAPI:
         logger.info("🐛 Debug endpoints enabled", endpoint_prefix="/debug/*")
     
     logger.info("🔗 MCP management endpoints enabled", endpoint_prefix="/v1/mcp/*")
+    logger.info("🎯 Claude Code health endpoints enabled", endpoint_prefix="/health/claude-code/*")
+    logger.info("🚀 Phase 2: Advanced Streaming endpoints enabled", endpoint_prefix="/v1/streaming/*")
+    logger.info("⚡ Phase 3A: Advanced Streaming Cache endpoints enabled", endpoint_prefix="/v1/cache/*")
+    logger.info("🌐 Phase 3B: Universal Multi-Model Streaming endpoints enabled", endpoint_prefix="/v1/universal/*")
     
     # Add custom exception handlers
     from fastapi.exceptions import RequestValidationError
@@ -271,6 +316,13 @@ def main():
         error_log_dir = f"{getattr(config, 'unified_logs_dir', 'logs')}/errors"
         initialize_error_logger(error_log_dir)
         main_logger.info(f"📝 Error logger initialized with directory: {error_log_dir}")
+        
+        # Initialize enhanced error handler with proper config
+        from src.utils.enhanced_error_handler import initialize_enhanced_error_handler, SERVER_INSTANCE_ID
+        debug_logs_dir = f"{getattr(config, 'unified_logs_dir', 'logs')}/debug"
+        enhanced_handler = initialize_enhanced_error_handler(debug_logs_dir)
+        main_logger.info(f"🔍 Enhanced error handler initialized with directory: {debug_logs_dir}")
+        main_logger.info(f"🆔 Server instance ID: {SERVER_INSTANCE_ID}")
     else:
         # Fallback to legacy logging - but this shouldn't happen anymore
         pass
