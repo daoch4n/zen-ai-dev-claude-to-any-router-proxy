@@ -1,324 +1,172 @@
-# OpenRouter Anthropic Server v2.0
+# Claude Code LiteLLM Proxy
 
-A production-ready, modular API proxy server that provides enhanced functionality for interacting with Anthropic's Claude models through OpenRouter with complete tool execution capabilities.
+A simple proxy setup that enables Claude Code to work with various LLM providers (like OpenRouter) using LiteLLM's beta `/v1/messages` endpoint.
 
 ## 🚀 Quick Start
 
 ```bash
-# Install dependencies
-uv sync
+uv venv
+source .venv/bin/activate
 
-# Set your OpenRouter API key
+uv sync
+uv pip install 'litellm[proxy]'
+
+# Set your API key (e.g., for OpenRouter)
 export OPENROUTER_API_KEY="your-api-key-here"
 
-# Start the server
-python start_server.py
+# Start the LiteLLM proxy server
+litellm --config ./configs/litellm_config.yaml
 
-# Test the server
-curl http://localhost:4000/health
+# Use Claude Code with the proxy (in another terminal)
+./claude-no-proxy "Hello, test the proxy!"
 ```
 
-## ✨ Key Features
-
-- **🔄 Full Anthropic API Compatibility** - Drop-in replacement for Anthropic API
-- **🛠️ Advanced Tool Execution** - 15+ Claude Code tools with security controls
-- **⚡ Production Ready** - Comprehensive monitoring, logging, and error handling
-- **🏗️ Modular Architecture** - Clean, maintainable, and scalable Prefect-based design
-- **🔒 Enhanced Security** - Input validation, rate limiting, and secure execution
-- **📊 Comprehensive Testing** - 283+ tests with 100% critical path coverage
-- **🌐 Streaming Support** - Real-time streaming responses
-- **📈 Performance Optimized** - Concurrent task execution and resource optimization
-
-## 📊 Status
-
-**✅ PRODUCTION READY**
-
-- **Test Suite**: 283/283 tests passing (100% success rate)
-- **Architecture**: Modular coordinator-flow-task architecture fully implemented
-- **Documentation**: Complete documentation suite
-- **Deployment**: Multiple deployment options available
-- **Security**: Production security controls implemented
-
-## 🔧 Supported Tools
-
-### File Operations (4 tools)
-- **Write** - Create or overwrite files
-- **Read** - Read file contents with options
-- **Edit** - String replacement in files
-- **MultiEdit** - Multiple replacements in one operation
-
-### Search Operations (3 tools)
-- **Glob** - File pattern matching with recursive search
-- **Grep** - Content search with regex support  
-- **LS** - Directory listing with detailed information
-
-### System Operations (2 tools)
-- **Bash** - Execute whitelisted shell commands
-- **Task** - Simple task management
-
-### Web Operations (2 tools)
-- **WebSearch** - Web search using DuckDuckGo
-- **WebFetch** - Fetch web page content
-
-### Notebook Operations (2 tools)
-- **NotebookRead** - Read Jupyter notebook contents
-- **NotebookEdit** - Modify notebook cells
-
-### Todo Operations (2 tools)
-- **TodoRead** - Read and filter todo items
-- **TodoWrite** - Full CRUD operations for tasks
-
-## 🏗️ Architecture
-
-The server uses a modular, task-based architecture with:
-
-- **FastAPI** for high-performance API endpoints
-- **Prefect** for workflow orchestration and task management
-- **Pydantic** for type safety and validation
-- **LiteLLM** for OpenRouter integration
-- **Instructor** for structured outputs
-
+- Claude Code output:
 ```
-┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Routers   │ -> │   Workflows     │ -> │ Prefect Tasks   │
-│                 │    │                 │    │                 │
-│ • Messages      │    │ • Tool Exec     │    │ • File Ops      │
-│ • Health        │    │ • Conversion    │    │ • Validation    │
-│ • Debug         │    │ • Validation    │    │ • Security      │
-└─────────────────┘    └─────────────────┘    └─────────────────┘
+> Hello, test the proxy!
+
+● I need more information to test a proxy. Could you provide details about:
+
+  - What type of proxy you want to test (HTTP, SOCKS, etc.)
+  - The proxy server address and port
+  - What you want to test (connectivity, performance, functionality)
 ```
 
-## 📚 Documentation
 
-Visit [`docs/`](docs/) for comprehensive documentation:
+## ✨ What This Does
 
-- **[📖 Documentation Overview](docs/README.md)** - Complete documentation guide
-- **[🔌 API Reference](docs/02-api-reference.md)** - Complete API documentation with examples
-- **[🏗️ Architecture](docs/03-architecture.md)** - System architecture and design
-- **[🔄 Unified Proxy Backend Guide](docs/17-unified-proxy-backend-guide.md)** - Backend configuration and routing
-- **[☁️ Azure Databricks Integration](docs/16-azure-databricks-guide.md)** - Comprehensive Azure Databricks Claude guide
-- **[🚀 Deployment Guide](docs/05-production-deployment-guide.md)** - Production deployment instructions
-- **[📊 Implementation Status](docs/08-implementation-status.md)** - Current implementation status
-- **[🧪 Testing Plan](docs/06-claude-code-cli-testing-plan.md)** - Comprehensive testing strategy
+This setup allows you to:
+- Use Claude Code with **any LLM provider** supported by LiteLLM
+- Route requests through **OpenRouter**, **Azure**, **AWS Bedrock**, and more
+- Maintain Claude Code's native functionality while using different models
+- Avoid proxy conflicts with the included `claude-no-proxy` script
+- Leverage LiteLLM's [Anthropic unified `/v1/messages` endpoint](https://docs.litellm.ai/docs/anthropic_unified) for seamless integration
 
-## 🚀 Deployment Options
+## 🔧 Setup
 
-### Option 1: Direct Python
+### 1. Install Dependencies
 ```bash
-# Install dependencies
-uv sync
-
-# Configure environment
-export OPENROUTER_API_KEY="your-api-key"
-export ENVIRONMENT="production"
-
-# Start server
-python start_server.py
+# Install latest LiteLLM with beta features support
+uv add "litellm>=1.72.6"
+uv pip install 'litellm[proxy]'
 ```
 
-### Option 2: Docker
-```bash
-# Build image
-docker build -t openrouter-anthropic-server .
+### 2. Configure Your LiteLLM Config
+Edit `./configs/litellm_config.yaml` to configure your preferred LLM provider and models.
 
-# Run container
-docker run -d \
-  -p 4000:4000 \
-  -e OPENROUTER_API_KEY="your-api-key" \
-  openrouter-anthropic-server
+### 3. Set Environment Variables
+```bash
+# For OpenRouter
+export OPENROUTER_API_KEY="your-openrouter-api-key"
+
+# For other providers, set the appropriate API keys
+# export OPENAI_API_KEY="your-openai-key"
+# export ANTHROPIC_API_KEY="your-anthropic-key"
+# etc.
 ```
 
-### Option 3: Docker Compose
+### 4. Start the Proxy
 ```bash
-# Configure environment
-echo "OPENROUTER_API_KEY=your-api-key" > .env
-
-# Start services
-docker-compose up -d
+litellm --config ./configs/litellm_config.yaml
 ```
 
-## 🔧 Configuration
+The proxy will start on `http://localhost:4000` by default.
 
-### Required Environment Variables
-- `OPENROUTER_API_KEY` - Your OpenRouter API key
-
-### Unified Proxy Backend Configuration
-The server supports four backend modes via the `PROXY_BACKEND` environment variable:
-
-#### **OPENROUTER** (Recommended)
-Direct OpenRouter integration for best performance:
+### 5. Use Claude Code
 ```bash
-PROXY_BACKEND=OPENROUTER
-OPENROUTER_API_KEY=your-api-key
-```
-
-#### **LITELLM_MESSAGES** (Native Anthropic Format)
-Use LiteLLM's `/v1/messages` endpoint with no format conversion:
-```bash
-PROXY_BACKEND=LITELLM_MESSAGES
-LITELLM_BASE_URL=http://localhost:4001
-OPENROUTER_API_KEY=your-api-key
-```
-**Benefits**: No format conversion overhead, simplified architecture, native Anthropic format support
-
-#### **AZURE_DATABRICKS**
-Route requests to Azure Databricks Claude endpoints:
-```bash
-PROXY_BACKEND=AZURE_DATABRICKS
-DATABRICKS_HOST=your-workspace-instance  # without .azuredatabricks.net
-DATABRICKS_TOKEN=your-databricks-token
-OPENROUTER_API_KEY=your-api-key  # still needed for fallback tools
-```
-
-#### **LITELLM_OPENROUTER** (Legacy)
-Use LiteLLM with format conversion for advanced features:
-```bash
-PROXY_BACKEND=LITELLM_OPENROUTER
-OPENROUTER_API_KEY=your-api-key
-LITELLM_MASTER_KEY=your-secure-master-key
-```
-
-### Optional Environment Variables
-- `ENVIRONMENT` - Environment mode (`development`/`production`)
-- `HOST` - Server host (default: `127.0.0.1`)
-- `PORT` - Server port (default: `4000`)
-- `LOG_LEVEL` - Logging level (default: `INFO`)
-- `DEBUG_ENABLED` - Enable debug features (default: `false`)
-- `LITELLM_BASE_URL` - LiteLLM proxy server URL (for LITELLM_MESSAGES backend)
-
-> **Note:** Use `env.example` as a template for your `.env` file. The `.env` file is gitignored for security.
-
-## 🧪 Testing
-
-```bash
-# Run all tests
-uv run pytest
-
-# Run with coverage
-uv run pytest --cov=src
-
-# Run specific test categories
-uv run pytest tests/unit/
-uv run pytest tests/integration/
-```
-
-## 📊 API Examples
-
-### Basic Chat
-```bash
-curl -X POST http://localhost:4000/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "anthropic/claude-sonnet-4",
-    "max_tokens": 100,
-    "messages": [
-      {"role": "user", "content": "Hello!"}
-    ]
-  }'
-```
-
-### With Tools
-```bash
-curl -X POST http://localhost:4000/v1/messages \
-  -H "Content-Type: application/json" \
-  -d '{
-    "model": "big",
-    "max_tokens": 1000,
-    "messages": [
-      {"role": "user", "content": "Create a file called test.txt with hello world"}
-    ],
-    "tools": [
-      {
-        "name": "Write",
-        "description": "Write content to a file",
-        "input_schema": {
-          "type": "object",
-          "properties": {
-            "file_path": {"type": "string"},
-            "content": {"type": "string"}
-          },
-          "required": ["file_path", "content"]
-        }
-      }
-    ]
-  }'
-```
-
-### Health Check
-```bash
-curl http://localhost:4000/health
-```
-
-## 🔍 Monitoring
-
-### Health Endpoints
-- `GET /health` - Basic health check
-- `GET /health/detailed` - Detailed system status
-- `GET /tool-metrics` - Tool execution metrics
-
-### Debug Endpoints (Development)
-- `GET /debug/errors/recent` - Recent error logs
-- `GET /debug/errors/stats` - Error statistics
-
-## 🛡️ Security Features
-
-- **Input Validation** - Multi-layer request validation
-- **Tool Security** - Whitelisted commands and path validation
-- **Rate Limiting** - Configurable rate limits per tool
-- **Error Sanitization** - Secure error responses
-- **CORS Configuration** - Proper cross-origin handling
-
-## 🔧 Claude Code CLI Integration
-
-Set up Claude Code CLI to use this proxy:
-
-```bash
-# Set the base URL
+# Set Claude Code to use the proxy
 export ANTHROPIC_BASE_URL=http://localhost:4000
 
 # Use the no-proxy script to avoid conflicts
-./claude-no-proxy "Hello, test the proxy server!"
+./claude-no-proxy "Your message here"
 ```
 
-## 📈 Performance
+## 🛠️ Configuration
 
-- **Concurrent Execution** - Independent operations run in parallel
-- **Async Processing** - Non-blocking I/O throughout
-- **Connection Pooling** - Efficient API connections
-- **Resource Optimization** - Optimized memory and CPU usage
-- **Horizontal Scaling** - Stateless design for easy scaling
+### LiteLLM Config
+Configure your models and providers in `./configs/litellm_config.yaml`. See the [LiteLLM documentation](https://docs.litellm.ai/) for full configuration options.
 
-## 🤝 Contributing
+### Claude No-Proxy Script
+The `claude-no-proxy` script ensures no proxy environment variables interfere with Claude Code:
 
-1. Fork the repository
-2. Create a feature branch
-3. Make your changes
-4. Add tests for new functionality
-5. Ensure all tests pass
-6. Submit a pull request
+```bash
+#!/bin/bash
+# Unset all proxy-related environment variables
+unset HTTP_PROXY HTTPS_PROXY http_proxy https_proxy NO_PROXY no_proxy
+
+# Run Claude Code with clean environment
+exec claude "$@"
+```
+
+## 🔍 Supported Providers
+
+Through LiteLLM, you can use:
+- **OpenRouter** - Access to multiple models
+- **OpenAI** - GPT models  
+- **Anthropic** - Claude models (direct)
+- **Azure OpenAI** - Enterprise Azure models
+- **AWS Bedrock** - Amazon's model marketplace
+- **Google AI** - Gemini and PaLM models
+- **Cohere** - Command and Generate models
+- And many more...
+
+## 📊 Usage Examples
+
+### Basic Chat
+```bash
+./claude-no-proxy "Explain how LiteLLM proxy works"
+```
+
+### Code Tasks
+```bash
+./claude-no-proxy "Create a Python function to calculate fibonacci numbers"
+```
+
+### File Operations (if your LiteLLM config supports tools)
+```bash
+./claude-no-proxy "Read the contents of config.yaml and explain it"
+```
+
+## 🐛 Troubleshooting
+
+### Common Issues
+
+**1. Invalid model name error**
+```bash
+  ⎿  API Error: 400 {"error":{"message":"400: {'error': 'completion: Invalid model name passed in 
+     model=claude-sonnet-4-20250514'}","type":"None","param":"None","code":"400"}}
+```
+
+```
+# Fix: Update your litellm_config.yaml with Claude Code desired model names
+# Map the correct anthropic model names to the llm models you want to use
+
+# Restart LiteLLM after updating config
+litellm --config ./configs/litellm_config.yaml
+```
+
+
+## 🎯 Why This Approach?
+
+This simplified setup:
+- ✅ **Simple** - Just one proxy server, no complex architecture
+- ✅ **Flexible** - Works with any LiteLLM-supported provider
+- ✅ **Native** - Preserves Claude Code's full functionality
+- ✅ **Reliable** - Uses LiteLLM's battle-tested proxy capabilities
+- ✅ **Lightweight** - Minimal overhead and dependencies
+
+## 📚 Documentation
+
+- [LiteLLM Documentation](https://docs.litellm.ai/)
+- [LiteLLM Proxy Server](https://docs.litellm.ai/docs/simple_proxy)
+- [Anthropic Unified `/v1/messages` Endpoint](https://docs.litellm.ai/docs/anthropic_unified)
+- [Supported Providers](https://docs.litellm.ai/docs/providers)
+
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
-## 🆘 Support
-
-For issues and questions:
-
-1. Check the [Documentation](docs/)
-2. Review [Debug Logging Guide](docs/07-debug-logging.md)
-3. Check [API Reference](docs/02-api-reference.md)
-4. Review [Implementation Status](docs/08-implementation-status.md)
-
-## 🎯 Project Goals Achieved
-
-- ✅ **Full Anthropic API Compatibility** - Complete drop-in replacement
-- ✅ **Advanced Tool Execution** - All 15 Claude Code tools operational
-- ✅ **Production Readiness** - Comprehensive testing and documentation
-- ✅ **Modular Architecture** - Maintainable and scalable design
-- ✅ **Security Controls** - Enterprise-grade security features
-- ✅ **Performance Optimization** - Optimized for production workloads
+MIT License
 
 ---
 
-**OpenRouter Anthropic Server v2.0** - Bridging Claude's capabilities with production reliability.
+**Simple, effective LLM proxying for Claude Code** - Get the power of multiple LLM providers with the familiarity of Claude Code.
